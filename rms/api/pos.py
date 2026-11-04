@@ -2990,7 +2990,7 @@ def approve_pos_return_document(ret, manager):
 	actor = frappe.session.user
 	try:
 		frappe.set_user("Administrator")
-		with prevent_pos_item_price_autoinsert(invoice):
+		with allow_rms_cashier_session_pos_invoice(invoice, session, session.user), prevent_pos_item_price_autoinsert(invoice):
 			invoice.flags.ignore_permissions = True
 			invoice.insert(ignore_permissions=True)
 			invoice.owner = manager

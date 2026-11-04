@@ -21,7 +21,7 @@ add_to_apps_screen = [
 app_include_js = ["/assets/rms/js/rms_desk.js?v=desk-a-35"]
 app_include_css = [
 	"/assets/rms/css/rms_desk.css?v=desk-a-8",
-	"/assets/rms/css/point_of_sale.css?v=pos-a-57",
+	"/assets/rms/css/point_of_sale.css?v=pos-a-58",
 ]
 web_include_css = ["/assets/rms/css/rms_login.css"]
 

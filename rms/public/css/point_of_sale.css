@@ -1072,6 +1072,17 @@ body .rms-split-dialog .rms-guest-check { min-width: 0; }
 .rms-pos-return-qty input:disabled { color:#7e8d86; background:#f3f6f3; cursor:not-allowed; }
 .rms-pos-return-selection { display:grid; gap:10px; }
 .rms-pos-return-waste { justify-self:start; }
+.rms-pos-picker-label { display:block; margin:0 0 5px; color:#60766c; font-size:12px; font-weight:550; }
+.rms-pos-static-picker { position:relative; }
+.rms-pos-static-picker > [data-pos-picker-trigger] { display:flex; width:100%; min-height:44px; align-items:center; justify-content:space-between; gap:12px; padding:9px 12px !important; color:#193638 !important; text-align:left; background:#fff !important; border:1px solid #a8beb1 !important; border-radius:9px !important; box-shadow:inset 0 1px 2px #16372c0a; }
+.rms-pos-static-picker > [data-pos-picker-trigger]:focus-visible { outline:3px solid #c6e2d0; border-color:#347858 !important; }
+.rms-pos-static-picker .rms-pos-picker-caret { color:#60766c; font-size:13px; transition:transform .12s ease; }
+.rms-pos-static-picker > [data-pos-picker-trigger][aria-expanded="true"] .rms-pos-picker-caret { transform:rotate(180deg); }
+.rms-pos-static-picker .rms-expense-category-list:not([hidden]) { position:absolute; top:calc(100% + 5px); left:0; right:0; z-index:1061; max-height:220px; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; padding:5px; background:#fff; border:1px solid #b9cec2; border-radius:10px; box-shadow:0 10px 26px #193d3d26; }
+.rms-pos-static-picker .rms-expense-category-list[hidden] { display:none !important; }
+.rms-pos-static-picker .rms-expense-category-option { display:flex; width:100%; min-height:38px; align-items:center; margin:0; padding:8px 10px; color:#24413e; text-align:left; white-space:normal; background:transparent; border:0; border-radius:6px; cursor:pointer; font-size:13px; font-weight:550; line-height:1.35; }
+.rms-pos-static-picker .rms-expense-category-option + .rms-expense-category-option { border-top:1px solid #edf2ee; }
+.rms-pos-static-picker .rms-expense-category-option:hover, .rms-pos-static-picker .rms-expense-category-option:focus, .rms-pos-static-picker .rms-expense-category-option[aria-selected="true"] { outline:none; background:#eaf4ed; color:#173d35; }
 .rms-pos-return-payment-dialog .modal-header { gap:10px; }
 .rms-pos-return-back { display:inline-grid; width:34px; height:34px; flex:0 0 auto; place-items:center; padding:0; color:#244b43; background:#f4f8f5; border:1px solid #cbd9d0; border-radius:8px; font-size:20px; line-height:1; }
 .rms-pos-return-back:hover { background:#e8f2eb; border-color:#80a995; }
