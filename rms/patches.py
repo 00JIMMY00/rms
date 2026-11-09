@@ -42,3 +42,10 @@ def enable_negative_stock_by_default():
 
 	frappe.clear_cache(doctype="Item")
 	frappe.clear_cache(doctype="Selling Product")
+
+
+def initialize_pos_operation_permissions():
+	"""Preserve direct manager actions once; later checkbox changes stay authoritative."""
+	for row in frappe.get_all('POS User',fields=['name','user']):
+		manager=bool(set(frappe.get_roles(row.user)) & {'POS Manager','System Manager'})
+		frappe.db.set_value('POS User',row.name,dict(can_void_items=int(manager),can_void_waste=int(manager),can_return_waste=int(manager)),update_modified=False)

@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+from decimal import Decimal, InvalidOperation
 
 import frappe
 from frappe import _
@@ -8,6 +9,7 @@ from frappe.model.document import Document
 from frappe.model.naming import make_autoname
 
 from rms.recipe import get_additional_recipe_order_types
+from rms.rms.doctype.selling_product_modifier_group.selling_product_modifier_group import get_minimum_selections
 
 
 class SellingProduct(Document):
@@ -19,6 +21,7 @@ class SellingProduct(Document):
 		self.validate_item_ownership()
 		self.validate_default_warehouse()
 		self.validate_options_and_prices()
+		self.validate_option_attribute()
 		self.validate_recipe()
 		self.validate_store_rows()
 		self.validate_modifiers()
@@ -70,8 +73,8 @@ class SellingProduct(Document):
 			frappe.throw(_("Select a Product Category and Unit of Measure before saving."))
 
 		category = frappe.get_doc("Product Category", self.product_category)
-		if not category.enabled or category.is_group or not category.item_group:
-			frappe.throw(_("Select an enabled leaf Product Category with an Item Group."))
+		if not category.enabled or not category.item_group:
+			frappe.throw(_("Select an enabled Product Category with an Item Group."))
 
 		item_code = make_autoname("RMS-ITEM-.YYYY.-.#####")
 		item = frappe.get_doc(
@@ -97,8 +100,8 @@ class SellingProduct(Document):
 		category = frappe.db.get_value(
 			"Product Category", self.product_category, ["enabled", "is_group", "item_group"], as_dict=True
 		)
-		if not category or not category.enabled or category.is_group or not category.item_group:
-			frappe.throw(_("Select an enabled leaf Product Category with an Item Group."))
+		if not category or not category.enabled or not category.item_group:
+			frappe.throw(_("Select an enabled Product Category with an Item Group."))
 		if self.item and frappe.db.exists("Item", self.item):
 			item_group = frappe.db.get_value("Item", self.item, "item_group")
 			if item_group != category.item_group:
@@ -320,6 +323,37 @@ class SellingProduct(Document):
 		)
 		return {"selling_price": rate if rate is not None else self.selling_price, "price_list": price_list}
 
+	def validate_option_attribute(self):
+		if not self.has_options or not self.option_attribute:
+			return
+		from erpnext.controllers.item_variant import validate_is_incremental, validate_item_attribute_value
+
+		attribute = frappe.get_doc("Item Attribute", self.option_attribute)
+		if attribute.disabled:
+			frappe.throw(_("Choose an enabled Option Attribute."))
+		allowed = [row.attribute_value for row in attribute.item_attribute_values]
+		seen = set()
+		for row in self.option_products:
+			value = str(row.attribute_value if row.attribute_value is not None else "").strip()
+			if not value:
+				frappe.throw(_("Set an Attribute Value for option {0}.").format(row.option_product))
+			key = value.casefold()
+			if attribute.numeric_values:
+				try:
+					number = Decimal(value)
+					if not number.is_finite():
+						raise InvalidOperation
+				except InvalidOperation:
+					frappe.throw(_("Attribute Value must be a number."))
+				validate_is_incremental(attribute, attribute.name, value, self.name)
+				key = number.normalize()
+			else:
+				validate_item_attribute_value(allowed, attribute.name, value, self.name, from_variant=False)
+			if key in seen:
+				frappe.throw(_("Each option must have a different Attribute Value."))
+			seen.add(key)
+			row.attribute_value = value
+
 	def validate_options_and_prices(self):
 		if self.has_options:
 			if self.maintain_stock:
@@ -476,6 +510,8 @@ class SellingProduct(Document):
 			frappe.throw(_("A Store and Preparation Area print route can only appear once."))
 
 	def validate_modifiers(self):
+		for row in self.modifier_groups:
+			get_minimum_selections(row)
 		groups = [row.modifier_group for row in self.modifier_groups if row.modifier_group]
 		if len(groups) != len(set(groups)):
 			frappe.throw(_("A Modifier Group can only be added once."))

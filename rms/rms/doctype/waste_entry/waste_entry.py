@@ -74,6 +74,7 @@ class WasteEntry(Document):
 			[self.row_as_stock_item(row) for row in self.items],
 			expense_account,
 			_("Waste {0}: {1}").format(self.name, self.reason),
+			stock_entry_type="Void",
 		)
 		if not stock_entry:
 			frappe.throw(_("The waste record did not produce any stock movement."))

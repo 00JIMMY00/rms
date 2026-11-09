@@ -8,6 +8,12 @@ from rms.rms.doctype.pos_user.pos_user import POSUser
 
 
 class TestPOSUser(unittest.TestCase):
+	def test_permission_edits_notify_only_the_affected_register_after_commit(self):
+		with patch("frappe.publish_realtime") as publish:
+			POSUser.on_update(frappe._dict(user="cashier@example.com"))
+		publish.assert_called_once_with("rms_pos_permissions_changed", {"user":"cashier@example.com"},
+			user="cashier@example.com", after_commit=True)
+
 	def test_role_summary_endpoint_returns_sorted_effective_roles_for_selected_user(self):
 		with patch("rms.api.pos.frappe.has_permission", return_value=True), \
 				patch("rms.api.pos.frappe.db.get_value", return_value="cashier@example.com"), \
@@ -30,6 +36,7 @@ class TestPOSUser(unittest.TestCase):
 			"can_view_tables", "can_view_open_orders", "can_view_sales_history", "can_reprint_receipts",
 			"can_checkout", "can_edit_open_orders", "can_apply_manual_discount", "can_cancel_orders", "can_transfer_tables",
 			"can_split_orders", "can_merge_orders", "can_request_returns", "can_payout", "can_access_kitchen",
+			"can_void_items", "can_void_waste", "can_return_waste",
 			"can_prepare_orders", "can_pick_orders", "can_acknowledge_cancellations", "allowed_brands",
 			"allowed_order_types", "allowed_preparation_areas", "discount_approval_password",
 		} <= fields)

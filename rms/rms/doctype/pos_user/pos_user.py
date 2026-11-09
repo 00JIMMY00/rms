@@ -4,6 +4,9 @@ from frappe.model.document import Document
 
 
 class POSUser(Document):
+	def on_update(self):
+		frappe.publish_realtime("rms_pos_permissions_changed", {"user": self.user}, user=self.user, after_commit=True)
+
 	def validate(self):
 		self.validate_user()
 		self.validate_employee()

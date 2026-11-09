@@ -21,7 +21,7 @@
       "options": "POS Order Item",
       "reqd": 1,
       "in_list_view": 1,
-      "columns": 2,
+      "columns": 3,
       "link_filters": "[[\"POS Order Item\",\"parent\",\"=\",\"eval:doc.pos_order\"],[\"POS Order Item\",\"parenttype\",\"=\",\"POS Order\"]]"
     },
     {
@@ -59,7 +59,7 @@
       "default": "Pending",
       "reqd": 1,
       "in_list_view": 1,
-      "columns": 3,
+      "columns": 2,
       "read_only": 1
     },
     {
@@ -69,5 +69,7 @@
       "default": "0"
     }
   ],
-  "permissions": []
+  "permissions": [],
+  "editable_grid": 1,
+  "grid_page_length": 20
 }

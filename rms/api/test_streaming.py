@@ -130,3 +130,14 @@ class TestRMSStreamingPayload(unittest.TestCase):
 				patch("rms.streaming.frappe.get_doc") as get_doc:
 			capture_doc_event(doc, "on_update")
 		get_doc.assert_not_called()
+
+class TestModifierRulePayload(unittest.TestCase):
+	def test_local_journal_preserves_complete_group_limits(self):
+		from rms.streaming import build_sync_payload
+		payload=build_sync_payload("Modifier Group", {"name":"SAUCES","allow_multiple_selections":1,"min_selections":1,"max_selections":2})
+		self.assertEqual(payload["data"],{"allow_multiple_selections":1,"min_selections":1,"max_selections":2})
+
+	def test_product_requirement_override_is_preserved(self):
+		from rms.streaming import build_sync_payload
+		payload=build_sync_payload("Selling Product", {"name":"PRODUCT","modifier_groups":[{"modifier_group":"SAUCES","selection_requirement":"Optional","sequence_id":1}]})
+		self.assertEqual(payload["data"]["modifier_groups"][0]["selection_requirement"],"Optional")

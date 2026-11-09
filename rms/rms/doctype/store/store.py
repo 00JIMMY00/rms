@@ -5,6 +5,7 @@ from frappe.model.document import Document
 
 class Store(Document):
 	def validate(self):
+		self.store_code = (self.store_code or "").strip()
 		self.validate_brands()
 		self.validate_defaults()
 		self.validate_order_type_taxes()
