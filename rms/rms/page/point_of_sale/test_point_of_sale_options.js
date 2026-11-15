@@ -5,15 +5,36 @@ const path = require("node:path");
 
 const sourcePath = path.join(__dirname, "point_of_sale.js");
 const source = `${fs.readFileSync(sourcePath, "utf8")}\nglobalThis.__RMSPointOfSale = RMSPointOfSale;`;
+const backOfficeExpenseSource = fs.readFileSync(path.join(__dirname, "../../../public/js/shift_expense.js"), "utf8");
 const styles = fs.readFileSync(path.join(__dirname, "../../../public/css/point_of_sale.css"), "utf8");
 
 async function run() {
+	assert.match(source, /data-actions-menu[\s\S]*?data-action="operation-approvals"/, "keep approvals inside the secondary actions menu");
+	assert.doesNotMatch(source, /data-action="review-expenses"|__\("Review Expenses"\)/, "keep the standalone Review Expenses screen out of the POS toolbar");
+	assert.doesNotMatch(source, /get_manager_pending_shift_expenses|issue_shift_expense_approval_code|reject_shift_expense|reviewPendingExpenses/, "keep manager expense review and approval actions out of POS");
+	assert.match(source, /set_secondary_action_label\(__\("Authorize Pending Expense"\)\)[\s\S]*?authorizePendingExpense\(context\.pending_expenses, context\.approvers \|\| \[\]\)/, "keep the manager-code entry action for cashiers with pending expenses");
+	assert.match(backOfficeExpenseSource, /frm\.add_custom_button\(__\("Issue Approval Code"\)/, "issue manager approval codes from the Shift Expense back-office record");
+	assert.match(backOfficeExpenseSource, /frm\.add_custom_button\(__\("Reject Expense"\)/, "keep rejection in the Shift Expense back-office record");
+	assert.match(source, /class="rms-payment-panel-head">[\s\S]*?\$\{paymentItemsButton\}/, "place View items beside Payment methods above the discount row");
+	assert.doesNotMatch(source, /rms-payment-items-launch-row/, "do not render View items as a separate row");
 	assert.match(source, /data-pay-discount-value="percentage"[^>]*step="5"/, "percentage discount slider moves in five point steps");
-	assert.match(source, /const max = Number\(this\.state\.totals\?\.grand_total \|\| 0\)/, "fixed discount input uses the invoice total as its maximum");
+	assert.match(source, /const max = Number\(this\.activeGuestPayment\?\.grand_total \|\| this\.state\.totals\?\.grand_total \|\| 0\)/, "fixed discount input is capped at the selected check total");
 	assert.doesNotMatch(source, /Configured by Back Office for this Store/, "payment UI does not expose the configured discount scope");
 	assert.ok(source.includes('const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "C"]'), "place decimal before zero on the payment keypad");
 	assert.match(source, /data-action="payment-open-discount"/, "open discount controls in a dedicated dialog from checkout");
+	assert.match(source, /data-action="payment-open-items"/, "open ordinary order item details from checkout");
+	assert.match(source, /rms-payment-items-backdrop[\s\S]*rms-payment-items-dialog/, "show order items in a dedicated popup");
+	assert.match(styles, /\.rms-payment-items-dialog-body\s*\{[^}]*overflow-y:\s*auto/, "scroll long item lists inside the popup body");
+	assert.match(styles, /\.rms-payment-items-dialog\s*\{[^}]*max-height:\s*min\(86vh/, "keep a long items popup within the viewport");
+	assert.match(source, /this\.currency\(totals\.tax_total \|\| 0\)/, "show the saved order tax total in the items popup");
+	assert.match(styles, /\.rms-payment-panel-head\s*\{[^}]*justify-content:\s*space-between/, "align the order items action with the payment section heading");
+	assert.match(source, /const discountTools = canEditDiscount \?/, "keep discount controls available in checkout");
 	assert.match(source, /rms-discount-backdrop[\s\S]*rms-discount-dialog/, "render discount controls in a centered overlay dialog");
+	assert.match(source, /const title = this\.activeGuestPayment \? __\("Discount for \{0\}"/, "name the guest whose card discount is being edited");
+	assert.match(source, /const currentDiscount = this\.activeGuestPayment \? activeGuestCheck\?\.discount_amount/, "show the selected guest card's existing discount in the dialog");
+	assert.match(styles, /body \.rms-split-dialog \.rms-guest-checks > \[data-payment-guests\][\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/, "force two guest cards side by side in the split dialog");
+	assert.doesNotMatch(styles, /@media\s*\(max-width:\s*680px\)[\s\S]{0,180}body \.rms-split-dialog \.rms-guest-checks > \[data-payment-guests\][\s\S]{0,100}grid-template-columns:\s*minmax\(0,\s*1fr\)/, "keep split guests side by side at tablet widths");
+	assert.match(source, /type === "Percentage" \? __\("Discount %"\) : __\("Discount amount"\)/, "label percentage entry as a percentage and fixed entry as an amount");
 	assert.doesNotMatch(source.slice(source.indexOf("renderDiscountApprovalPrompt("), source.indexOf("queuePaymentDiscountPreview(")), /<select data-discount-approver/, "render managers as explicit choices in the approval step");
 	assert.match(source, /data-action="payment-discount-approver"/, "select an authorizer before revealing the code step");
 	assert.match(source, /if \(action === "payment-discount-approver"\)/, "handle manager selection from approval dialog");
@@ -21,6 +42,50 @@ async function run() {
 	assert.match(source, /applyButton\.hidden = true/, "hide Apply while the cashier is choosing a manager");
 	assert.match(source, /applyButton\.textContent = __\("Verify and Apply"\); applyButton\.hidden = false/, "show code verification only after a manager is selected");
 	assert.match(source, /data-action="payment-discount-close"/, "allow closing the discount dialog");
+	assert.ok(source.indexOf('data-mode="items" aria-pressed=') < source.indexOf('data-mode="amount" aria-pressed='), "show item splitting first and equally split second");
+	assert.match(source, /this\.paymentSplitMode = activeOrderItemCount >= 2 \? "items" : "amount"/, "default to item split when there are at least two active order lines");
+	assert.match(source, /button\.setAttribute\("aria-pressed", String\(button\.dataset\.mode === this\.paymentSplitMode\)\)/, "keep the selected split button synchronized with the active allocation mode");
+	assert.match(source, /By items requires at least two active order items/, "prevent item splitting when the order has only one active line");
+	assert.match(source, /data-action="guest-check-take-payment"/, "open one separate payment screen for each unpaid guest");
+	assert.match(source, /guestPayment[\s\S]*?rms-guest-payment-overview[\s\S]*?renderGuestPaymentProgress\(Number\(this\.state\.totals\?\.grand_total/, "keep the confirmed split and full-order payment progress visible while paying one guest");
+	assert.match(source, /renderPaymentGuests\(Boolean\(this\.paymentSplitSetupOpen \|\| this\.activeGuestPayment\)\)/, "show guest cards as a read-only overview during partial payment");
+	assert.match(source, /guest\.check_name === this\.activeGuestPayment\?\.guest_check_name/, "identify the guest check being paid now");
+	assert.match(source, /class="rms-guest-check-status is-current">\$\{__\("Selected"\)\}/, "label the selected guest check during payment");
+	assert.match(source, /const guestResplitButton = activeGuestCheck\?\.status === "Open"[\s\S]*?data-action="guest-check-resplit-current"/, "place re-splitting inside the selected guest's payment screen");
+	assert.match(source, /data-split-checks-anchor[\s\S]*?data-guest-checks/, "keep the item split editor available from the partial payment screen");
+	assert.match(source, /data-mode="amount">\$\{__\("Equally"\)\}<\/button><\/div><\/div><\/div><p data-split-description hidden><\/p><div data-payment-guests>/, "keep the guest cards outside the toolbar in the partial payment re-split dialog");
+	assert.match(source, /activeGuestPayment \? await this.call\("get_guest_check_print_html"/, "print only the active guest check from its payment screen");
+	assert.match(source, /data-action="split-item-adjust"/, "move grouped item quantities with simple plus and minus controls");
+	assert.match(source, /paymentItemAssignments\[row\.order_item_name\] = allocation/, "store a per-guest quantity for each order line");
+	assert.match(source, /paymentItemAssignments\[row\.order_item_name\] = allocation/, "start item allocation at Guest 1 and adjust by quantity");
+	assert.match(source, /getPaymentItemGroups\(\)/, "group identical product rows into one visible item row");
+	assert.match(source, /allocation = Array\(\(this\.paymentGuests \|\| \[\]\)\.length\)\.fill\(0\); allocation\[0\] = active/, "start all item quantities on Guest 1");
+	assert.doesNotMatch(source.slice(source.indexOf("changePaymentGuestCount(delta)"), source.indexOf("async setPaymentSplitMode")), /distributePaymentItemsEvenly/, "adding guests does not redistribute the full order");
+	assert.match(source, /handlePaymentKey\(key\)[\s\S]*?this\.paymentKeypadInput = input/, "use the keypad to enter amounts into the selected payment field");
+	assert.match(styles, /.rms-guest-checks.is-item-split \.rms-split-description \{ display:none !important; \}/, "remove explanatory copy from the guest card space");
+	assert.match(styles, /data-split-balance\]\[data-valid="true"\] \{ display:none !important; \}/, "hide the redundant success status while keeping split errors visible");
+	assert.match(styles, /\.rms-payment-layout\.is-item-split > \.rms-payment-keypad \{[\s\S]*?display:block !important;/, "keep the touch keypad available during item split");
+	assert.match(styles, /grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,290px\),1fr\)\)/, "keep guest cards side by side when there is room");
+	assert.match(styles, /\.rms-split-dialog \.rms-guest-checks > \[data-payment-guests\] \{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\) !important/, "keep the two split guests side by side in the resplit dialog");
+	assert.match(source, /if \(itemSplitActive\)[\s\S]*?this\.paymentInput = guestTender/, "route the touch keypad to visible guest tender fields during item splits");
+	assert.match(source, /this\.call\("save_guest_check_allocations"/, "persist guest assignments before printing or payment");
+	assert.match(source, /this\.call\("pay_guest_check"/, "submit only the selected guest check for payment");
+	assert.ok(source.includes('this.call("pay_guest_check", { order_name: this.state.order_name, guest_check_name: activeGuestPayment.guest_check_name'), "submit multiple payment methods for the selected guest on its own payment screen");
+	assert.match(source, /pay_guest_check", \{ order_name: this\.state\.order_name, guest_check_name: activeGuestPayment\.guest_check_name, payments: JSON\.stringify\(payments\), discount_type:/, "submit the selected discount with a guest check payment");
+	assert.match(source, /this\.paymentSourceTotal = Number\(this\.paymentDiscountPreview\.grand_total \|\| 0\);[\s\S]*?this\.paymentTotal = this\.roundPosPayable\(this\.paymentSourceTotal\)/, "round the selected guest check's discounted preview total");
+	assert.match(source, /guest_check_name: this\.activeGuestPayment\?\.guest_check_name \|\| null/, "preview discounts within the selected guest check");
+	assert.match(source, /activeGuestCheck\?\.discount_value/, "reopen the selected guest check with its own discount settings");
+	assert.match(source, /renderGuestPaymentProgress\(total\)[\s\S]*?role="progressbar"/, "show cumulative paid progress on the confirmed split");
+	assert.match(source, /__\("Paid amount"\)/, "label the cumulative payments with clear wording");
+	assert.match(source, /const progress = root\.querySelector\("\[data-guest-payment-progress-container\]"\);[\s\S]*?progress\.innerHTML = this\.renderGuestPaymentProgress\(this\.paymentTotal\)/, "show the paid progress as soon as guest checks are confirmed");
+	assert.match(styles, /\.rms-guest-payment-progress-track span \{[^}]*background:#347858/, "fill the payment progress with the RMS identity green");
+	assert.match(styles, /\.rms-payment-layout\.is-item-split \.rms-guest-check-actions \{[^}]*grid-template-columns:minmax\(0,1fr\)/, "show just the single Take Payment action on each guest card");
+	assert.match(source, /is-guest-check-overview/, "identify the confirmed guest card overview separately from payment screens");
+	assert.match(source, /Boolean\(this\.guestSplitFinalized && itemMode && !this\.activeGuestPayment\)/, "hide the keypad based on the confirmed split state rather than the hidden checkbox");
+	assert.doesNotMatch(source, /Split confirmed · guest checks are locked|data-split-confirmed-label/, "do not show a locked status label after confirming the split");
+	assert.match(styles, /\.rms-payment-layout\.is-guest-check-overview > \.rms-payment-keypad \{ display:none !important; \}/, "hide the keypad only from the confirmed guest overview");
+	assert.doesNotMatch(source, /data-item-share|share each item between people/i, "do not split a single line by percentage");
+	assert.match(styles, /\.rms-guest-checks\.is-item-split \.[\s\S]*?grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,290px\),1fr\)\)/, "fit split guest cards alongside the touch keypad");
 	assert.match(source, /data-action="payment-discount-type"[^>]*aria-pressed=/, "render the selected discount type explicitly");
 	assert.match(source, /data-method="OTP" aria-pressed=/, "offer one-time code verification for manager approval");
 	assert.match(source, /data-method="Password" aria-pressed=/, "offer the manager's fixed approval password");
@@ -40,6 +105,15 @@ async function run() {
 	assert.doesNotMatch(source, /New items confirmed and sent to preparation|frappe\.show_alert\(\{ message: __\("New items confirmed/, "do not show a transient toast after confirming order items");
 	const discountInputHandler = source.slice(source.indexOf('root.addEventListener("input"'), source.indexOf('root.addEventListener("focusin"'));
 	assert.match(discountInputHandler, /queuePaymentDiscountPreview\(false\)/, "refresh the amount preview while editing without opening manager approval early");
+	const roundingHelper = Object.create(contextlessPosPrototype());
+	roundingHelper.state = { brand: "BRAND-1", brands: [{ name: "BRAND-1", pos_rounding_method: "Round Up" }] };
+	assert.equal(roundingHelper.roundPosPayable(80.49), 81, "Round Up turns 80.49 into 81 based on the selected Restaurant Brand");
+	assert.equal(roundingHelper.roundPosPayable(80.49, "Nearest"), 80, "Nearest turns 80.49 into 80");
+	assert.equal(roundingHelper.roundPosPayable(80.49, "Round Down"), 80, "Round Down turns 80.49 into 80");
+	assert.equal(roundingHelper.roundPosPayable(80.49, "No Rounding"), 80.49, "No Rounding preserves the fractional payable");
+	roundingHelper.state.brands[0].pos_rounding_method = "No Rounding";
+	assert.equal(roundingHelper.getPosRoundingMethod(), "No Rounding", "honor No Rounding configured on the Restaurant Brand");
+	assert.equal(roundingHelper.roundPosPayable(77.50, "Nearest"), 78, "Nearest rounds a half-pound tie up");
 	const helpers = Object.create(contextlessPosPrototype());
 	let errorToast;
 	const errorContext = vm.createContext({ frappe: { pages: { "point-of-sale": {} }, show_alert(config, duration) { errorToast = { config, duration }; } }, __: (value) => value, document: {}, window: {}, Event, setTimeout, clearTimeout });
@@ -52,8 +126,18 @@ async function run() {
 	Object.create(errorContext.__RMSPointOfSale.prototype).showError({ message: "The operation could not be completed." });
 	assert.equal(errorToast.config.message, "The operation could not be completed.", "show a short toast for client-side errors without server messages");
 	assert.equal(errorToast.duration, 7, "keep API errors as short POS alerts");
-	assert.deepEqual(Array.from(helpers.getSuggestedPaymentAmounts(155)), [155, 160, 170, 200], "suggest cash amounts rounded to useful EGP denominations");
-	assert.deepEqual(Array.from(helpers.getSuggestedPaymentAmounts(80)), [80, 90, 100], "remove duplicate denomination suggestions");
+	assert.deepEqual(Array.from(helpers.getSuggestedPaymentAmounts(155)), [155, 160, 200], "suggest exact, five, ten, and fifty pound rounded amounts without duplicates");
+	assert.deepEqual(Array.from(helpers.getSuggestedPaymentAmounts(80)), [80, 100, 200], "offer higher banknote denominations when useful");
+	assert.deepEqual(Array.from(helpers.getSuggestedPaymentAmounts(531.07)), [531.07, 535, 540, 550, 600], "suggest the requested rounded amounts for a discounted total of 531.07");
+	assert.deepEqual(Array.from(helpers.getSuggestedPaymentAmounts(482.79)), [482.79, 485, 490, 500, 600], "include a 600 pound option for three 200 pound notes");
+	let suggestedAmountsHtml = "";
+	helpers.paymentTotal = 531.07;
+	helpers.currency = (amount) => Number(amount).toFixed(2);
+	helpers.page = { main: [{ querySelector(selector) { return selector === "[data-suggested-payment-amounts]" ? { set innerHTML(value) { suggestedAmountsHtml = value; } } : null; } }] };
+	helpers.updateSuggestedPaymentAmounts();
+	for (const amount of [535, 540, 550, 600]) assert.match(suggestedAmountsHtml, new RegExp(`data-amount="${amount}"`), `render ${amount} after recalculating payment suggestions`);
+	const applyDiscountSource = source.slice(source.indexOf("async applyPaymentDiscount()"), source.indexOf("async handleSplitCheckToggle("));
+	assert.match(applyDiscountSource, /this\.updateSuggestedPaymentAmounts\(\)/, "recalculate the visible payment suggestions after applying a discount");
 	const tenderAmounts = { Cash: 250, "Credit Card": 250, "Mobile Wallet": 250 };
 	let remainingText = "";
 	let changeText = "";
@@ -88,17 +172,24 @@ async function run() {
 	helpers.updatePaymentTotal();
 	assert.equal(changeText, "721.50", "show the correct change for the reported 700 plus 50 tender on a 28.50 order");
 	let cleared = false;
-	const keypadInput = { value: "25", dispatchEvent(event) { cleared = event.type === "input"; } };
+	const keypadInput = { isConnected: true, value: "25", dispatchEvent(event) { cleared = event.type === "input"; } };
 	helpers.paymentInput = keypadInput;
 	helpers.handlePaymentKey("C");
 	assert.equal(keypadInput.value, "", "C clears the selected tender amount");
 	assert.equal(cleared, true, "clearing refreshes remaining and change calculations");
+	helpers.handlePaymentKey("4"); helpers.handlePaymentKey("2"); helpers.handlePaymentKey("."); helpers.handlePaymentKey("5");
+	assert.equal(keypadInput.value, "42.5", "touch keypad starts a fresh entry after selecting a tender field");
 	let dialogConfig;
 	let dialog;
 	let flowHtml = "";
 	let primaryDisabled = true;
 	const handlers = {};
 	let hideCount = 0;
+	let dialogQuantity = 2;
+	let checkedModifiers = [];
+	let displayedQuantity = "";
+	let keypadHtml = "";
+	let keypadHidden = true;
 	const wrapper = {
 		addClass() { return this; },
 		show() { return this; },
@@ -106,9 +197,13 @@ async function run() {
 		on(_event, selector, callback) { handlers[selector] = callback; return this; },
 		off() { return this; },
 		find(selector) {
+			if (selector === ".modal-footer") return { prepend(value) { keypadHtml = value; } };
+			if (selector === "[data-quantity-popover]") return { prop(name, value) { keypadHidden = value; } };
+			if (selector === "[data-quantity-display]") return { text(value) { displayedQuantity = value; } };
+			if (selector === "[data-modifier]:checked") return checkedModifiers;
 			if (selector === "[data-option-flow]") return { html(value) { flowHtml = value; } };
 			if (selector === ".modal-footer .btn-primary") return { prop(_name, value) { primaryDisabled = value; } };
-			return { html() {}, prop() {} };
+			return { html() {}, prop() {}, attr() {}, trigger() {} };
 		},
 	};
 	const frappe = {
@@ -117,7 +212,8 @@ async function run() {
 			constructor(config) { dialogConfig = config; this.$wrapper = wrapper; dialog = this; }
 			show() {}
 			hide() { hideCount += 1; }
-			get_value(fieldname) { return fieldname === "quantity" ? 2 : fieldname === "notes" ? "خفيف سكر" : undefined; }
+			get_value(fieldname) { return fieldname === "quantity" ? dialogQuantity : fieldname === "notes" ? "خفيف سكر" : undefined; }
+			async set_value(fieldname, value) { await Promise.resolve(); if (fieldname === "quantity") dialogQuantity = value; }
 		} },
 		msgprint(message) { throw new Error(message); },
 	show_alert() {},
@@ -129,9 +225,99 @@ async function run() {
 	pos.escape = (value) => String(value);
 	pos.currency = (value) => `${value} EGP`;
 	pos.showError = (error) => { throw error; };
+	const itemDialogUi = Object.create(context.__RMSPointOfSale.prototype);
+	itemDialogUi.state = { cart: [
+		{ order_item_name: "LEMON-1", item_code: "LEMON", title: "Mint Lemonade", qty: 1, price: 68, uom: "Nos", modifier_labels: [] },
+		{ order_item_name: "LEMON-2", item_code: "LEMON", title: "Mint Lemonade", qty: 2, price: 68, uom: "Nos", modifier_labels: [] },
+		{ order_item_name: "LEMON-3", item_code: "LEMON", title: "Mint Lemonade", qty: 3, price: 68, uom: "Nos", modifier_labels: [] },
+		{ order_item_name: "LEMON-MODIFIED", item_code: "LEMON", title: "Mint Lemonade", qty: 1, price: 68, uom: "Nos", modifier_labels: [{ title: "Extra Mint", price: 3 }] },
+		{ order_item_name: "WATER-1", item_code: "WATER", title: "Nile Valley Water 600 ml", qty: 1, price: 25, uom: "Nos", modifier_labels: [] },
+	], totals: { subtotal: 506, tax_total: 70.84, grand_total: 576.84 } };
+	itemDialogUi.escape = (value) => String(value);
+	itemDialogUi.currency = (value) => `${Number(value).toFixed(2)} EGP`;
+	const itemDialogHtml = itemDialogUi.renderPaymentItemsDialog();
+	assert.equal((itemDialogHtml.match(/class="rms-payment-items-row"/g) || []).length, 3, "group identical order lines while keeping modified items separate");
+	assert.match(itemDialogHtml, /Mint Lemonade[\s\S]*?6 Nos × 68\.00 EGP[\s\S]*?<strong>408\.00 EGP<\/strong>/, "show six identical lemonades as one quantity-six row");
+	assert.match(itemDialogHtml, /Extra Mint/, "keep modifier details on their distinct item row");
+	const splitUi = Object.create(context.__RMSPointOfSale.prototype);
+	splitUi.state = { cart: [
+		{ order_item_name: "ROW-LEMON", title: "Lemonade", qty: 1, price: 68 },
+		{ order_item_name: "ROW-LEMON-2", title: "Lemonade", qty: 1, price: 68 },
+		{ order_item_name: "ROW-TEA", title: "Tea", qty: 2, price: 15 },
+	] };
+	splitUi.paymentSplitMode = "items";
+	splitUi.guestCheckState = { guest_checks: [
+		{ name: "CHECK-1", guest_name: "Guest One", status: "Open", grand_total: 136, items: [{ name: "ROW-LEMON", qty: 1 }, { name: "ROW-LEMON-2", qty: 1 }] },
+		{ name: "CHECK-2", guest_name: "Guest Two", status: "Open", grand_total: 0, items: [] },
+		{ name: "CHECK-3", guest_name: "Guest Three", status: "Open", grand_total: 30, items: [{ name: "ROW-TEA", qty: 2 }] },
+	] };
+	splitUi.paymentGuests = [
+		{ name: "Guest One", method: "Cash", amount: 68, due: 68 },
+		{ name: "Guest Two", method: "Cash", amount: 0, due: 0 },
+		{ name: "Guest Three", method: "Cash", amount: 30, due: 30 },
+	];
+	splitUi.paymentGuestMethods = [{ mode_of_payment: "Cash" }];
+	splitUi.paymentItemAssignments = { "ROW-LEMON": [1, 0, 0], "ROW-LEMON-2": [1, 0, 0], "ROW-TEA": [0, 0, 2] };
+	splitUi.guestSplitFinalized = false;
+	splitUi.escape = (value) => String(value);
+	splitUi.currency = (value) => `${Number(value).toFixed(2)} EGP`;
+	const splitSetupHtml = splitUi.renderPaymentGuests(true);
+	assert.match(splitSetupHtml, /Tea/, "keep zero-quantity products visible while assigning items");
+	assert.doesNotMatch(splitSetupHtml, /data-guest-method|data-guest-amount|data-action="guest-check-pay"/, "keep payment actions out of the setup dialog");
+	splitUi.guestSplitFinalized = true;
+	const splitGuestHtml = splitUi.renderPaymentGuests();
+	const splitDialogHtml = splitUi.renderPaymentSplitDialog();
+	assert.match(splitDialogHtml, /data-split-dialog role="dialog"/, "open split setup in an accessible modal");
+	assert.match(splitDialogHtml, /data-split-modal-host/, "render split setup inside the modal");
+	assert.match(source, /data-mode="items"[\s\S]*data-mode="amount"/, "choose item assignment first and equal sharing second in the modal content");
+	assert.match(splitDialogHtml, /data-action="payment-confirm-split"/, "confirm the split before guest checks become available");
+	assert.doesNotMatch(splitDialogHtml, /data-action="guest-check-take-payment"/, "do not expose payment actions before confirming the split");
+	splitUi.paymentResplitGuestIndex = 0;
+	const resplitDialogHtml = splitUi.renderPaymentSplitDialog();
+	assert.match(resplitDialogHtml, /Assign this open check's items to guests/, "explain that re-splitting applies only to the selected check");
+	assert.doesNotMatch(resplitDialogHtml, /equal shares/, "do not offer amount-based splitting when re-splitting");
+	splitUi.paymentResplitGuestIndex = null;
+	assert.equal((splitGuestHtml.match(/class="rms-guest-check /g) || []).length, 3, "render a separate side-by-side guest card for each person");
+	const guestOneCard = splitGuestHtml.split("<article class=\"rms-guest-check ")[1];
+	const guestThreeCard = splitGuestHtml.split("<article class=\"rms-guest-check ")[3];
+	assert.match(guestOneCard, /Lemonade/, "show each assigned item inside its guest check");
+	assert.equal((guestOneCard.match(/class="rms-guest-item"/g) || []).length, 1, "render only assigned product groups after confirming the split");
+	assert.match(styles, /\.rms-guest-item \{ display:grid; grid-template-columns:minmax\(0,1fr\) auto/, "keep the item name full width and place its quantity controls at the row end");
+	assert.match(styles, /\.rms-guest-item-copy strong \{[^}]*white-space:normal/, "allow long product names to wrap instead of truncating");
+	assert.match(guestOneCard, /Lemonade[\s\S]*?<b>2<\/b>/, "show the grouped quantity for repeated product lines");
+	assert.match(guestThreeCard, /Tea/, "support assigning an item to a third guest");
+	assert.equal((splitGuestHtml.match(/data-action="guest-check-take-payment"/g) || []).length, 3, "render one Take Payment action for each unpaid guest");
+	assert.equal((splitGuestHtml.match(/data-action="guest-check-resplit-current"/g) || []).length, 0, "keep the re-split action off the guest overview cards");
+	assert.doesNotMatch(splitGuestHtml, /data-guest-method|data-guest-amount|data-action="guest-check-pay-print"|data-action="guest-check-print"/, "keep payment controls off confirmed guest cards");
+	assert.doesNotMatch(guestThreeCard, /Lemonade/, "hide zero-quantity items from finalized guest cards");
+	const lockedSplitHtml = splitUi.renderPaymentGuests();
+	assert.match(lockedSplitHtml, /data-action="split-item-adjust"[^>]*disabled/, "disable item reassignment after confirming the split");
+	assert.match(lockedSplitHtml, /data-guest-name[^>]*disabled/, "lock guest names after confirming the split");
+	assert.doesNotMatch(lockedSplitHtml, /data-action="guest-check-resplit-current"/, "keep the re-split action off the guest overview cards");
+	assert.match(source, /this\.paymentSplitMode = "items";[\s\S]*this\.paymentResplitGuestIndex/, "re-split mode is item-only and remembers the selected guest card");
+	assert.match(source, /this\.call\("resplit_open_guest_check"/, "save the selected guest's item split without editing the other cards");
+	const quantityUi = Object.create(context.__RMSPointOfSale.prototype);
+	quantityUi.state = { cart: [{ order_item_name: "ROW-CHICKEN", title: "Chicken", qty: 7, price: 100 }, { order_item_name: "ROW-TEA", title: "Tea", qty: 1, price: 20 }] };
+	quantityUi.paymentSplitMode = "items";
+	quantityUi.paymentGuests = [{ name: "Guest 1" }, { name: "Guest 2" }];
+	quantityUi.paymentItemAssignments = { "ROW-CHICKEN": [7, 0], "ROW-TEA": [1, 0] };
+	quantityUi.syncPaymentGuestFields = () => {};
+	quantityUi.renderPaymentItemAssignments = () => {};
+	quantityUi.updateGuestSplitAmounts = () => {};
+	const chickenGroup = quantityUi.getPaymentItemGroups().find((group) => group.title === "Chicken");
+	quantityUi.adjustPaymentItemAllocation(chickenGroup.key, 1, 1);
+	assert.deepEqual(quantityUi.paymentItemAssignments["ROW-CHICKEN"], [6, 1], "plus transfers one unit from Guest 1 even when the order line quantity is seven");
+	quantityUi.paymentResplitGuestIndex = 0;
+	quantityUi.paymentResplitItemNames = ["ROW-CHICKEN", "ROW-TEA"];
+	quantityUi.guestCheckState = { guest_checks: [{ items: [{ name: "ROW-CHICKEN", qty: 6 }, { name: "ROW-TEA", qty: 1 }] }] };
+	quantityUi.renderPaymentItemAssignments = () => {};
+	quantityUi.updateGuestSplitAmounts = () => {};
+	const teaGroup = quantityUi.getPaymentItemGroups().find((group) => group.title === "Tea");
+	quantityUi.adjustPaymentItemAllocation(teaGroup.key, 1, 1);
+	assert.equal(quantityUi.guestCheckState.guest_checks[0].items.length, 2, "keep the selected guest check's source quantities while recalculating a re-split");
 	const root = {
-		name: "FRAPPE", title: "Frappé", has_options: true, options: [
-			{ name: "FLAVOR-CARAMEL", title: "Caramel", has_options: true, price: null },
+		name: "FRAPPE", title: "Frappé", option_attribute: "Flavor", has_options: true, options: [
+			{ name: "FLAVOR-CARAMEL", title: "Frappé with caramel", attribute_value: "Caramel", has_options: true, price: null },
 		], modifier_groups: [],
 	};
 	const sizeConfig = {
@@ -151,6 +337,9 @@ async function run() {
 
 	pos.showProductOptions(root, "FRAPPE");
 	assert.equal((flowHtml.match(/rms-pos-option-level/g) || []).length, 1, "show the first choice in the single modal");
+	assert.match(flowHtml, /<h4>Flavor<\/h4>/);
+	assert.match(flowHtml, />Caramel<\/span>/);
+	assert.doesNotMatch(flowHtml, /Choose options|Frappé with caramel/);
 
 	await handlers["[data-option-depth]"]({ currentTarget: { dataset: { optionDepth: "0" }, value: "FLAVOR-CARAMEL" } });
 	assert.equal((flowHtml.match(/rms-pos-option-level/g) || []).length, 2, "keep the flavor and size choices visible together");
@@ -158,11 +347,13 @@ async function run() {
 
 	await handlers["[data-option-depth]"]({ currentTarget: { dataset: { optionDepth: "1" }, value: "FRAPPE-CARAMEL-LARGE" } });
 	assert.match(flowHtml, /Milk/);
+	assert.match(flowHtml, /<details class="rms-pos-modifier-group">/);
+	assert.doesNotMatch(flowHtml, /<details[^>]* open/);
 	assert.equal(primaryDisabled, false, "enable Add to order once a priced leaf option is selected");
 	assert.equal(hideCount, 0, "keep modifiers in the same modal as product options");
 
 	handlers["[data-modifier-key]"]({ currentTarget: {
-		dataset: { modifierKey: "MILK:WHOLE-MILK", group: "MILK" }, type: "radio", checked: true,
+		dataset: { modifierKey: JSON.stringify(["MILK", "WHOLE-MILK"]), group: "MILK" }, type: "radio", checked: true,
 	} });
 	await dialogConfig.primary_action({ quantity: 2, notes: "خفيف سكر" });
 	assert.equal(hideCount, 1, "close the modal only after adding the configured product");
@@ -171,7 +362,100 @@ async function run() {
 	assert.deepEqual(JSON.parse(JSON.stringify(pos.added[2])), [{ modifier_group: "MILK", modifier_product: "WHOLE-MILK", qty: 1 }]);
 	assert.equal(pos.added[4].qty, 2);
 	assert.equal(pos.added[4].notes, "خفيف سكر");
+	assert.ok(!dialogConfig.fields.some(field => field.fieldname === "quantity_keypad"), "the keypad does not take space in the dialog body");
+	for (const key of ["0", "1", "9", ".", "C"]) assert.ok(keypadHtml.includes(`data-quantity-key="${key}"`));
+	assert.equal(dialogConfig.fields.find(field => field.fieldname === "quantity").hidden, 1, "remove the visible quantity row");
+	assert.equal(keypadHidden, true);
+	handlers["[data-quantity-toggle]"]();
+	assert.equal(keypadHidden, false, "open the compact keypad only when the quantity is tapped");
+	handlers["[data-quantity-close]"]();
+	assert.equal(keypadHidden, true);
+	const adjustQuantity = delta => handlers["[data-quantity-adjust]"]({ currentTarget: { dataset: { quantityAdjust: String(delta) } } });
+	await adjustQuantity(1);
+	assert.equal(dialogQuantity, 3);
+	await adjustQuantity(-1);
+	assert.equal(dialogQuantity, 2);
+	const tapQuantity = key => handlers["[data-quantity-key]"]({ currentTarget: { dataset: { quantityKey: key } } });
+	await tapQuantity("4");
+	assert.equal(dialogQuantity, 4, "first tap replaces the initial quantity");
+	assert.equal(displayedQuantity, "4");
+	await Promise.all([tapQuantity("2"), tapQuantity("3")]);
+	assert.equal(dialogQuantity, 423, "rapid taps concatenate in order despite asynchronous Frappe updates");
+	await tapQuantity("C");
+	assert.equal(dialogQuantity, 0, "C clears the complete quantity");
+	assert.equal(displayedQuantity, "0");
+	assert.equal(primaryDisabled, true, "clearing prevents adding an item with zero quantity");
+	await tapQuantity("2");
+	await tapQuantity(".");
+	assert.equal(displayedQuantity, "2.", "preserve decimal separator while entering a quantity");
+	await tapQuantity(".");
+	await tapQuantity("5");
+	assert.equal(dialogQuantity, 2.5);
+	assert.equal(primaryDisabled, false);
+	assert.equal(pos.validConfigurationQuantity({ must_be_whole_number: true }, 2.5), false);
+	assert.equal(pos.validConfigurationQuantity({ must_be_whole_number: true }, 2), true);
+	handlers["[data-quantity-toggle]"]();
+	let escapeHandled = false;
+	handlers["[data-quantity-control]"]({ key: "Escape", preventDefault() {}, stopPropagation() { escapeHandled = true; } });
+	assert.equal(keypadHidden, true);
+	assert.equal(escapeHandled, true, "Escape closes the keypad without dismissing the product dialog");
 
+	finalConfig.modifier_groups[0].min_selections = 1;
+	delete pos.added;
+	pos.showProductOptions(root, "FRAPPE");
+	await handlers["[data-option-depth]"]({ currentTarget: { dataset: { optionDepth: "0" }, value: "FLAVOR-CARAMEL" } });
+	await handlers["[data-option-depth]"]({ currentTarget: { dataset: { optionDepth: "1" }, value: "FRAPPE-CARAMEL-LARGE" } });
+	assert.equal(primaryDisabled, true, "a priced option still needs its required modifier");
+	assert.match(flowHtml, /<details[^>]* open/);
+	assert.match(flowHtml, /Required/);
+	await assert.rejects(dialogConfig.primary_action({ quantity: 1 }), /Choose at least/);
+	assert.equal(pos.added, undefined, "the primary action cannot bypass a required modifier");
+	handlers["[data-modifier-key]"]({ currentTarget: { dataset: { modifierKey: JSON.stringify(["MILK", "WHOLE-MILK"]), group: "MILK" }, type: "radio", checked: true } });
+	assert.equal(primaryDisabled, false);
+	await dialogConfig.primary_action({ quantity: 4, notes: "Required choice" });
+	assert.equal(pos.added[4].qty, 4);
+	await handlers["[data-option-depth]"]({ currentTarget: { dataset: { optionDepth: "0" }, value: "FLAVOR-CARAMEL" } });
+	await handlers["[data-option-depth]"]({ currentTarget: { dataset: { optionDepth: "1" }, value: "FRAPPE-CARAMEL-LARGE" } });
+	assert.equal(primaryDisabled, true, "changing the option clears old required selections");
+
+	delete pos.added;
+	pos.showModifiers(finalConfig);
+	assert.equal(primaryDisabled, true, "modifier-only products also require their configured minimum");
+	await assert.rejects(dialogConfig.primary_action(), /Choose at least/);
+	assert.equal(pos.added, undefined);
+	checkedModifiers = [{ dataset: { group: "MILK", modifier: "WHOLE-MILK" } }];
+	handlers["[data-modifier]"]();
+	assert.equal(primaryDisabled, false);
+	await dialogConfig.primary_action();
+	assert.equal(pos.added[4].qty, 2.5, "preserve fractional quantities entered on the keypad");
+	checkedModifiers = [];
+	handlers["[data-modifier]"]();
+	assert.equal(primaryDisabled, true, "removing a required choice disables Add again");
+
+	dialogQuantity = undefined;
+	const optionalConfig = { ...finalConfig, modifier_groups: [{ ...finalConfig.modifier_groups[0], min_selections: 0 }] };
+	pos.showModifiers(optionalConfig);
+	assert.equal(primaryDisabled, true, "wait for the hidden quantity field to initialize");
+	dialogQuantity = 1;
+	dialogConfig.fields.find(field => field.fieldname === "quantity").change();
+	assert.equal(primaryDisabled, false, "enable an optional-modifier item when its default quantity finishes initializing without requiring another tap");
+
+	assert.match(pos.modifierGroupHtml({title:"Sauces",allow_collapse:false},"choices"), /^<section/, "non-collapsible groups stay fully visible");
+	assert.doesNotMatch(pos.modifierGroupHtml({title:"Sauces",allow_collapse:true,collapsed_by_default:true,min_selections:0},"choices"), /<details[^>]* open/, "optional groups honor the collapsed default");
+	assert.match(pos.modifierGroupHtml({title:"Sauces",allow_collapse:true,collapsed_by_default:true,min_selections:1},"choices"), /<details[^>]* open/, "required choices remain discoverable");
+	const limitedConfig = { modifier_groups: [{ name: "SAUCE", title: "Sauces", allow_multiple_selections: true, min_selections: 1, max_selections: 2, options: [{name:"A"},{name:"B"},{name:"C"}] }] };
+	const sauceChoice = name => ({ modifier_group: "SAUCE", modifier_product: name });
+	assert.equal(pos.modifierSelectionError(limitedConfig, [sauceChoice("A"), sauceChoice("B")]), "");
+	assert.match(pos.modifierSelectionError(limitedConfig, [sauceChoice("A"), sauceChoice("B"), sauceChoice("C")]), /Choose at most/);
+	const choiceInputs = ["A", "B", "C"].map((name, index) => ({dataset:{group:"SAUCE"},checked:index<2,disabled:false}));
+	const limitDialog = {$wrapper:[{querySelectorAll:()=>choiceInputs}]};
+	pos.syncModifierLimits(limitDialog, limitedConfig, [sauceChoice("A"), sauceChoice("B")]);
+	assert.deepEqual(choiceInputs.map(input=>input.disabled), [false,false,true], "at the maximum only unchecked choices are disabled");
+	choiceInputs[1].checked = false;
+	pos.syncModifierLimits(limitDialog, limitedConfig, [sauceChoice("A")]);
+	assert.equal(choiceInputs[2].disabled, false, "removing a choice allows replacing it");
+	const unlimitedConfig = { modifier_groups: [{ ...limitedConfig.modifier_groups[0], max_selections: 0 }] };
+	assert.equal(pos.modifierSelectionError(unlimitedConfig, [sauceChoice("A"), sauceChoice("B"), sauceChoice("C")]), "");
 	let productHtml = "";
 	let productCountText = "";
 	pos.page = { main: { find(selector) {
@@ -181,6 +465,7 @@ async function run() {
 	} } };
 	pos.state = {
 		session: { name: "SESSION-1" },
+		store: "STORE-1", brand: "BRAND-1", order_type: "Takeaway",
 		permissions: { can_checkout: true },
 		catalog_mode: "products",
 		bootstrap_loading: false,
@@ -199,6 +484,7 @@ async function run() {
 	assert.match(productHtml, /Choose option/, "tell the cashier to open the parent product options");
 	assert.equal(productCountText, "{0} products");
 	let discountInput = 10;
+	let discountType = "Percentage";
 	let paymentTotalText = "";
 	let paymentDiscountText = "";
 	const pendingPreviews = [];
@@ -207,8 +493,8 @@ async function run() {
 	let approvalCodeFocused = false;
 	const approvalCodeInput = { focus() { approvalCodeFocused = true; } };
 	pos.page = { main: Object.assign({ find(selector) {
-		if (selector === "[data-pay-discount-type]") return { val: () => "Percentage" };
-		if (selector === '[data-pay-discount-value="percentage"]') return { val: () => discountInput };
+		if (selector === "[data-pay-discount-type]") return { val: () => discountType };
+		if (selector.startsWith('[data-pay-discount-value=')) return { val: () => discountInput };
 		if (selector === "[data-pay-discount-reason]") return { val: () => "" };
 		if (selector === "[data-discount-percent-label]") return { text() {} };
 		if (selector === ".rms-payment-total") return { text(value) { paymentTotalText = value; } };
@@ -251,6 +537,20 @@ async function run() {
 	assert.equal(discountFeedback.innerHTML, "", "clear a stale manager prompt when the discount is within the cashier limit");
 	assert.equal(discountFeedback.textContent, "", "remove stale manager guidance after a permitted discount preview");
 	assert.equal(pos.paymentDiscountPreview.grand_total, 95, "retain a permitted preview for the Apply action");
+	discountType = "Amount";
+	discountInput = 101;
+	pos.discountPreviewRequestId = 5;
+	await pos.refreshPaymentDiscountPreview(5, "", false);
+	assert.equal(paymentDiscountText, "—", "clear the previous calculated discount when the entered amount is invalid");
+	assert.equal(pos.paymentDiscountPreview, null, "do not retain a stale valid discount preview for an invalid amount");
+	const dialogContext = Object.create(contextlessPosPrototype());
+	dialogContext.paymentDiscount = { type: "Percentage", value: 20, reason: "" };
+	dialogContext.state = { totals: { grand_total: 100, discount_amount: 20 } };
+	dialogContext.escape = (value) => String(value);
+	dialogContext.currency = (value) => Number(value || 0).toFixed(2);
+	assert.match(dialogContext.renderPaymentDiscountDialog(), /<span>Discount %<\/span>/, "show a percentage label beside the percentage control");
+	dialogContext.paymentDiscount.type = "Amount";
+	assert.match(dialogContext.renderPaymentDiscountDialog(), /<span>Discount amount<\/span>/, "show an amount label beside the amount control");
 	const approvers = [{ user: "manager@example.com", full_name: "POS Manager" }];
 	pos.renderDiscountApprovalPrompt(approvers, "");
 	assert.match(discountFeedback.innerHTML, /data-action="payment-discount-approver"/, "show manager choices after Apply requires approval");
@@ -264,7 +564,10 @@ async function run() {
 	assert.match(discountFeedback.innerHTML, /data-method="Password" aria-pressed="true"/, "visually select fixed-password approval");
 	discountFeedback.innerHTML = "";
 	pos.paymentDiscountApprovers = approvers;
-	pos.selectDiscountApprover("manager@example.com");
+	let automaticRequests = 0;
+	pos.requestDiscountApprovalCode = async () => { automaticRequests++; };
+	await pos.selectDiscountApprover("manager@example.com");
+	assert.equal(automaticRequests, 1, "selecting the manager automatically sends OTP");
 	assert.match(discountFeedback.innerHTML, /POS Manager[\s\S]*data-discount-approval-code/, "show the selected manager before revealing the code input");
 	assert.equal(approvalCodeFocused, true, "focus the newly revealed code field after manager selection");
 	let selectedType = "Percentage";
@@ -291,10 +594,13 @@ async function run() {
 	assert.equal(typeButtons[0].pressed, "true");
 	assert.equal(typeButtons[1].pressed, "false");
 	let reasonValue = "";
+	let discountValue = "10";
 	let applyDisabled = false;
 	const applyStateHelper = Object.create(contextlessPosPrototype());
 	applyStateHelper.page = { main: { 0: { querySelector(selector) {
 		if (selector === "[data-action='payment-apply-discount']") return { hidden: false, set disabled(value) { applyDisabled = value; } };
+		if (selector === "[data-pay-discount-type]") return { value: "Amount" };
+		if (selector === '[data-pay-discount-value="amount"]') return { value: discountValue };
 		if (selector === "[data-discount-approval-code]") return null;
 		if (selector === "[data-pay-discount-reason]") return { value: reasonValue };
 		return null;
@@ -325,9 +631,11 @@ async function run() {
 	pos.paymentTotal = 10;
 	pos.paymentDiscount = { type: "Percentage", value: 0, reason: "" };
 	pos.paymentSubmitting = false;
+	pos.ensureCurrentOrderActive = async () => true;
 	pos.call = () => { paymentCalls += 1; return new Promise((resolve) => { finishPayment = resolve; }); };
 	const firstSubmission = pos.submitPayment(false);
 	const repeatedSubmission = pos.submitPayment(false);
+	await new Promise(resolve => setImmediate(resolve));
 	assert.equal(paymentCalls, 1, "ignore a second payment action while the first request is pending");
 	assert.equal(payButtonsDisabled, true, "disable both payment actions during submission");
 	finishPayment({ pos_invoice: "POSINV-1", status: "Paid" });

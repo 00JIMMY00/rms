@@ -3,6 +3,8 @@ import frappe
 
 def ensure_pos_roles():
 	"""Install the operational roles referenced by POS API permission checks."""
+	from rms.stock import ensure_void_stock_entry_type
+	ensure_void_stock_entry_type()
 	for role_name in ("POS Cashier", "POS Manager", "Kitchen Operator"):
 		if not frappe.db.exists("Role", role_name):
 			frappe.get_doc({"doctype": "Role", "role_name": role_name, "desk_access": 1}).insert(ignore_permissions=True)

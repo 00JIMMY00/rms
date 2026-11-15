@@ -1,10 +1,19 @@
+import math
+
 import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, now_datetime
 from erpnext.stock.stock_ledger import is_negative_stock_allowed
 
+from rms.streaming_replica import upstream, validate as validate_replica
+
 from rms.recipe import get_recipe_components
+from rms.rms.doctype.selling_product_modifier_group.selling_product_modifier_group import (
+	allows_multiple_selections,
+	get_maximum_selections,
+	get_minimum_selections,
+)
 from rms.snapshots import parse_json_rows, serialize_json_rows
 from rms.taxes import apply_order_discount, apply_order_tax_template, prevent_pos_item_price_autoinsert
 from rms.utils import get_business_date
@@ -40,14 +49,34 @@ def validate_confirmed_item_cancellation(status, sent_to_kitchen, qty, cancelled
 	return cancellation_qty
 
 
-def validate_modifier_group_selection(modifiers, single_selection_groups):
-	"""Reject multiple selected modifier products from a single-choice group."""
+def validate_modifier_group_selection(modifiers, single_selection_groups, minimum_selections=None, maximum_selections=None):
+	"""Enforce single-choice groups and minimum/maximum distinct choices."""
 	selected_single_groups = set()
 	for modifier in modifiers:
 		group = modifier.get("modifier_group")
 		if group in single_selection_groups and group in selected_single_groups:
 			frappe.throw(_("Choose only one option from Modifier Group {0}.").format(group))
 		selected_single_groups.add(group)
+	for group, minimum in (minimum_selections or {}).items():
+		selected = {row.get("modifier_product") for row in modifiers
+			if row.get("modifier_group") == group and row.get("modifier_product")}
+		if len(selected) < minimum:
+			frappe.throw(_("Choose at least {0} option(s) from Modifier Group {1}.").format(minimum, frappe.utils.escape_html(group)))
+
+	for group, maximum in (maximum_selections or {}).items():
+		selected = {row.get("modifier_product") for row in modifiers
+			if row.get("modifier_group") == group and row.get("modifier_product")}
+		if maximum and len(selected) > maximum:
+			frappe.throw(_("Choose at most {0} option(s) from Modifier Group {1}.").format(maximum, frappe.utils.escape_html(group)))
+
+
+def modifier_choices_unchanged(previous_row, row, modifiers):
+	"""Keep saved choices valid when a group becomes required later."""
+	if not previous_row or previous_row.selling_product != row.selling_product:
+		return False
+	def choices(rows):
+		return {(entry.get("modifier_group"), entry.get("modifier_product")) for entry in rows}
+	return choices(parse_json_rows(previous_row.modifiers)) == choices(modifiers)
 
 
 def normalize_dining_context(require_table, dining_area=None, dining_table=None):
@@ -62,6 +91,71 @@ def ensure_order_items_append_only(previous_items, current_items):
 	if len(current_items) <= len(previous_items) or current_items[:len(previous_items)] != previous_items:
 		frappe.throw(_("Confirmed items cannot be edited or removed."))
 	return current_items[len(previous_items):]
+
+
+def normalize_guest_checks_for_lock(guest_checks):
+	"""Keep confirmed guest identities and their item quantities stable."""
+	checks = []
+	for check in guest_checks or []:
+		items = check.get("items_json") or "[]"
+		items = frappe.parse_json(items) if isinstance(items, str) else items
+		allocations = []
+		for item in items or []:
+			if isinstance(item, str):
+				allocations.append((item, None))
+			elif isinstance(item, dict):
+				allocations.append((item.get("name"), flt(item.get("qty")) if item.get("qty") is not None else None))
+		allocations.sort(key=lambda row: row[0] or "")
+		checks.append((check.get("guest_name"), tuple(allocations)))
+	return checks
+
+
+def ensure_confirmed_guest_checks_unchanged(previous, current):
+	"""Reject order item or split edits after guest checks have been confirmed."""
+	if not previous or not previous.guest_checks:
+		return
+	if POSOrder.serialize_order_items(previous) != POSOrder.serialize_order_items(current):
+		frappe.throw(_("Order items cannot be changed after guest checks are confirmed."))
+	if normalize_guest_checks_for_lock(previous.guest_checks) != normalize_guest_checks_for_lock(current.guest_checks):
+		frappe.throw(_("Guest checks are confirmed and cannot be changed."))
+
+
+def ensure_guest_check_item_append_only(previous, current):
+	"""Allow new order rows only when all are assigned to the first open check."""
+	previous_items = POSOrder.serialize_order_items(previous)
+	current_items = POSOrder.serialize_order_items(current)
+	ensure_order_items_append_only(previous_items, current_items)
+	old_checks = list(previous.guest_checks or [])
+	new_checks = list(current.guest_checks or [])
+	if len(old_checks) != len(new_checks) or [row.name for row in old_checks] != [row.name for row in new_checks]:
+		frappe.throw(_("Guest checks cannot be added or removed while adding order items."))
+	target = next((row for row in old_checks if row.status == "Open"), None)
+	if not target or len(current_items) <= len(previous_items):
+		frappe.throw(_("New items can only be added to an open guest check."))
+	target_name = target.name
+	old_by_name = {row.name: row for row in old_checks}
+	new_by_name = {row.name: row for row in new_checks}
+	old_item_names = {row.name for row in previous.items}
+	new_item_names = [row.name for row in current.items if row.name not in old_item_names]
+	for name, old in old_by_name.items():
+		new = new_by_name[name]
+		if old.guest_name != new.guest_name or old.status != new.status or old.pos_invoice != new.pos_invoice:
+			frappe.throw(_("Guest check identity and payment status cannot change while adding items."))
+		old_allocations = frappe.parse_json(old.items_json or "[]") if isinstance(old.items_json, str) else old.items_json
+		new_allocations = frappe.parse_json(new.items_json or "[]") if isinstance(new.items_json, str) else new.items_json
+		if name != target_name:
+			if normalize_guest_checks_for_lock([old]) != normalize_guest_checks_for_lock([new]):
+				frappe.throw(_("Only the first open guest check can receive new items."))
+		elif old_allocations != new_allocations[:len(old_allocations)] or len(new_allocations) != len(old_allocations) + len(new_item_names):
+			frappe.throw(_("New items must be assigned to the first open guest check."))
+		else:
+			new_allocations = new_allocations[len(old_allocations):]
+			current_by_name = {row.name: get_active_order_item_qty(row.qty, row.cancelled_qty) for row in current.items}
+			if {row.get("name") for row in new_allocations if isinstance(row, dict)} != set(new_item_names) or any(
+				flt(allocation.get("qty")) != flt(current_by_name.get(allocation.get("name")))
+				for allocation in new_allocations if isinstance(allocation, dict)
+			):
+				frappe.throw(_("New items must be assigned to the first open guest check."))
 
 
 def option_tree_contains(parent_name, product_name, visited=None):
@@ -85,7 +179,14 @@ def calculate_discount_amount(subtotal, tax_total, discount_type, discount_value
 
 
 class POSOrder(Document):
+	def autoname(self):
+		from rms.order_naming import next_pos_order_name
+
+		self.name, self.naming_series = next_pos_order_name(self.store)
+
 	def before_insert(self):
+		if upstream(self):
+			return
 		self.status = "Open"
 		self.business_date = (
 			frappe.db.get_value("Cashier Session", self.cashier_session, "business_date")
@@ -93,8 +194,19 @@ class POSOrder(Document):
 		) or get_business_date(self.store)
 
 	def validate(self):
+		if upstream(self):
+			validate_replica(self)
+			return
 		self.normalize_check_label()
 		previous = self.get_doc_before_save()
+		if previous:
+			if self.flags.get("allow_guest_check_item_append"):
+				ensure_guest_check_item_append_only(previous, self)
+			elif self.flags.get("allow_guest_check_resplit"):
+				if self.serialize_order_items(previous) != self.serialize_order_items(self):
+					frappe.throw(_("Order items cannot be changed while splitting an open guest check."))
+			else:
+				ensure_confirmed_guest_checks_unchanged(previous, self)
 		self.validate_transition()
 		if previous and previous.status in ("Confirmed", "In Preparation", "Ready", "Paid", "Cancelled"):
 			if self.flags.get("allow_item_cancellation") and previous.status in ("Confirmed", "In Preparation", "Ready"):
@@ -111,6 +223,12 @@ class POSOrder(Document):
 			if self.status == "Cancelled":
 				self.validate_terminal_state()
 				return
+			if self.flags.get("allow_pending_item_edit") and previous.status in ("Confirmed", "In Preparation", "Ready"):
+				self.validate_context()
+				self.validate_pending_item_edit(previous)
+				self.resolve_items([row for row in self.items if not row.sent_to_kitchen])
+				self.validate_payment_state()
+				return
 			if self.flags.get("allow_order_item_append") and previous.status in ("Confirmed", "In Preparation", "Ready"):
 				self.validate_context()
 				ensure_order_items_append_only(
@@ -118,6 +236,10 @@ class POSOrder(Document):
 				)
 				self.resolve_items(self.items[len(previous.items):])
 				self.validate_payment_state()
+				if self.flags.get("allow_guest_check_item_append"):
+					target = next(row for row in self.guest_checks if row.status == "Open")
+					previous_target = next(row for row in previous.guest_checks if row.name == target.name)
+					target.grand_total = max(0, flt(previous_target.grand_total) + flt(self.grand_total) - flt(previous.grand_total))
 				return
 			if self.flags.get("allow_discount_update") and previous.status in ("Confirmed", "In Preparation", "Ready"):
 				self.validate_discount(self.subtotal, self.tax_total, self.grand_total)
@@ -195,10 +317,26 @@ class POSOrder(Document):
 		previous_items = self.serialize_order_items(previous)
 		if self.flags.get("allow_item_cancellation"):
 			self.validate_item_cancellation_change(previous)
+		elif self.flags.get("allow_pending_item_edit"):
+			self.validate_pending_item_edit(previous)
 		elif self.flags.get("allow_order_item_append"):
 			ensure_order_items_append_only(previous_items, current_items)
 		elif current_items != previous_items:
 			frappe.throw(_("Order items cannot be edited after they are confirmed."))
+
+	def validate_pending_item_edit(self, previous):
+		"""Allow draft quantity edits while preserving sent rows and their identities."""
+		if previous.cashier_session != self.cashier_session or previous.guest_checks:
+			frappe.throw(_("Only the order owner can edit unallocated, unconfirmed items."))
+		def sent_snapshot(document):
+			return [(row.name, values) for row, values in zip(document.items, self.serialize_order_items(document)) if row.sent_to_kitchen]
+		if sent_snapshot(previous) != sent_snapshot(self):
+			frappe.throw(_("Confirmed items cannot be edited or removed."))
+		previous_names = {row.name: row for row in previous.items}
+		for row in self.items:
+			old = previous_names.get(row.name)
+			if not row.sent_to_kitchen and (row.cancelled_qty or (old and old.sent_to_kitchen)):
+				frappe.throw(_("Confirmed items cannot be edited or removed."))
 
 	def serialize_order_items(self, document=None):
 		document = document or self
@@ -261,7 +399,7 @@ class POSOrder(Document):
 		cancelled_deltas = {name: flt(current_by_name[name].cancelled_qty or 0) - flt(old_by_name[name].cancelled_qty or 0)
 			for name in old_by_name}
 		roles = set(frappe.get_roles(frappe.session.user))
-		is_manager = bool(roles & {"POS Manager", "System Manager"})
+		is_manager = bool(self.flags.get("pos_operation_authorized") or roles & {"POS Manager", "System Manager"})
 		new_events_by_item = {}
 		for event in new_cancellations:
 			row = current_by_name.get(event.pos_order_item)
@@ -280,7 +418,9 @@ class POSOrder(Document):
 
 	@staticmethod
 	def serialize_item_cancellation(row):
-		return (row.pos_order_item, flt(row.qty), (row.reason or "").strip(), row.cancelled_by, row.cancelled_at)
+		return (row.pos_order_item, flt(row.qty), (row.reason or "").strip(), row.cancelled_by, row.cancelled_at,
+			bool(getattr(row, "is_waste", 0)), getattr(row, "waste_stock_entry", None), getattr(row, "comment", None),
+			getattr(row, "approved_by", None), getattr(row, "approval_challenge", None))
 
 	def recalculate_cancelled_item_amounts(self):
 		for row in self.items:
@@ -407,6 +547,9 @@ class POSOrder(Document):
 			)
 		)
 		rows = list(rows) if rows is not None else list(self.items)
+		previous = self.get_doc_before_save()
+		previous_rows = {row.name: row for row in previous.items} if previous else {}
+		modifier_group_settings = {}
 		row_ids = {row.name for row in rows}
 		subtotal = sum(flt(row.amount) for row in self.items if row.name not in row_ids)
 		for row in rows:
@@ -419,7 +562,7 @@ class POSOrder(Document):
 					frappe.throw(_("Selected option product does not belong to the Option Parent."))
 			if product.product_category not in self.get_brand_menu_categories():
 				frappe.throw(_("Product {0} is not available on a Menu for this Brand.").format(product.title))
-			if not row.qty or row.qty <= 0:
+			if not row.qty or not math.isfinite(row.qty) or row.qty <= 0:
 				frappe.throw(_("Product quantities must be greater than zero."))
 			if frappe.db.get_value("UOM", row.uom, "must_be_whole_number") and row.qty % 1:
 				frappe.throw(_("Unit {0} does not allow fractional quantities.").format(row.uom))
@@ -449,11 +592,30 @@ class POSOrder(Document):
 			modifier_rows = []
 			seen_modifiers = set()
 			modifiers = parse_json_rows(row.modifiers)
+			for group in product.modifier_groups:
+				if group.modifier_group not in modifier_group_settings:
+					modifier_group_settings[group.modifier_group] = frappe.db.get_value(
+						"Modifier Group", group.modifier_group,
+						["allow_multiple_selections", "min_selections", "max_selections", "enabled"], as_dict=True,
+					) or frappe._dict()
 			single_selection_groups = {
 				group.modifier_group for group in product.modifier_groups
-				if not frappe.db.get_value("Modifier Group", group.modifier_group, "allow_multiple_selections")
+				if not allows_multiple_selections(modifier_group_settings[group.modifier_group], group)
 			}
-			validate_modifier_group_selection(modifiers, single_selection_groups)
+			minimum_selections = {
+				group.modifier_group: get_minimum_selections(group, modifier_group_settings[group.modifier_group].min_selections)
+				for group in product.modifier_groups
+				if modifier_group_settings[group.modifier_group].enabled
+			}
+			maximum_selections = {
+				group.modifier_group: get_maximum_selections(modifier_group_settings[group.modifier_group], group)
+				for group in product.modifier_groups
+				if modifier_group_settings[group.modifier_group].enabled
+			}
+			if modifier_choices_unchanged(previous_rows.get(row.name), row, modifiers):
+				minimum_selections = {}
+				maximum_selections = {}
+			validate_modifier_group_selection(modifiers, single_selection_groups, minimum_selections, maximum_selections)
 			for modifier_row in modifiers:
 				key = (modifier_row.modifier_group, modifier_row.modifier_product)
 				if key in seen_modifiers:
@@ -463,6 +625,8 @@ class POSOrder(Document):
 					item.modifier_group for item in product.modifier_groups
 				}:
 					frappe.throw(_("Modifier Group is not configured for this product."))
+				if not modifier_group_settings[modifier_row.modifier_group].enabled:
+					frappe.throw(_("The selected Modifier Group is disabled."))
 				option = next(
 					(
 						item
@@ -485,7 +649,9 @@ class POSOrder(Document):
 					for entry in modifier_product.store_order_type_exclusions
 				):
 					frappe.throw(_("Modifier {0} is disabled for this Order Type.").format(modifier_product.title))
-				modifier_row.qty = modifier_row.qty or 1
+				modifier_row.qty = flt(modifier_row.qty or 1)
+				if not math.isfinite(modifier_row.qty) or modifier_row.qty <= 0:
+					frappe.throw(_("Modifier quantities must be greater than zero."))
 				modifier_row.selling_price = option.selling_price or 0
 				modifier_row.item = modifier_product.item
 				modifier_defaults = modifier_product.get_effective_defaults(self.store)
@@ -587,7 +753,7 @@ class POSOrder(Document):
 		components.extend(modifier_components)
 		order_row.recipe_snapshot = serialize_json_rows(components)
 
-	def calculate_tax_preview(self, apply_discount=False):
+	def calculate_tax_preview(self, apply_discount=False, guest_check=None, discount_order=None, return_details=False):
 		"""Use ERPNext's invoice calculator so preview and checkout share tax rules."""
 		from frappe.utils import nowdate
 
@@ -603,8 +769,20 @@ class POSOrder(Document):
 		invoice.selling_price_list = profile.selling_price_list
 		invoice.taxes_and_charges = self.sales_taxes_and_charges_template
 		line_rates = []
+		allocations = None
+		if guest_check:
+			items = frappe.parse_json(guest_check.items_json or "[]") if isinstance(guest_check.items_json, str) else guest_check.items_json
+			allocations = ({item["name"]: flt(item.get("qty"), 6) if item.get("qty") is not None else None
+				for item in items or [] if isinstance(item, dict) and item.get("name")}
+				| {item: None for item in items or [] if isinstance(item, str)})
 		for row in self.items:
 			active_qty = get_active_order_item_qty(row.qty, row.cancelled_qty)
+			if allocations is not None:
+				if row.name not in allocations:
+					continue
+				allocated_qty = allocations[row.name]
+				if allocated_qty is not None:
+					active_qty = min(active_qty, allocated_qty)
 			if not active_qty:
 				continue
 			invoice_row = invoice.append("items", {
@@ -639,13 +817,16 @@ class POSOrder(Document):
 				invoice.set_missing_values()
 				apply_order_tax_template(invoice, self.sales_taxes_and_charges_template)
 				if apply_discount:
-					apply_order_discount(invoice, self)
+					apply_order_discount(invoice, discount_order or self)
 				for invoice_row, rate, warehouse in line_rates:
 					invoice_row.rate = rate
 					invoice_row.price_list_rate = rate
 					if warehouse:
 						invoice_row.warehouse = warehouse
 				invoice.calculate_taxes_and_totals()
+				if return_details:
+					return {"subtotal": flt(invoice.total), "tax_total": flt(invoice.total_taxes_and_charges),
+						"grand_total": flt(invoice.grand_total)}
 				return flt(invoice.total_taxes_and_charges), flt(invoice.grand_total)
 		finally:
 			frappe.set_user(actor)
@@ -656,8 +837,19 @@ class POSOrder(Document):
 		if not self.payments:
 			frappe.throw(_("Add at least one payment before marking the order Paid."))
 		paid_total = sum(flt(row.amount) for row in self.payments)
-		if abs(paid_total - flt(self.grand_total)) > 0.01:
-			frappe.throw(_("Payment amounts must equal the order Grand Total."))
+		guest_invoice_names = [row.pos_invoice for row in (self.guest_checks or [])
+			if row.status == "Paid" and row.pos_invoice]
+		if guest_invoice_names:
+			expected_total = sum(flt(frappe.db.get_value("POS Invoice", name, "rounded_total"))
+				for name in guest_invoice_names)
+		elif self.pos_invoice:
+			expected_total = flt(frappe.db.get_value("POS Invoice", self.pos_invoice, "rounded_total"))
+		else:
+			from rms.pos_rounding import round_pos_payable
+			rounding_method = frappe.db.get_value("Restaurant Brand", self.restaurant_brand, "pos_rounding_method") or "Nearest"
+			expected_total = flt(round_pos_payable(self.grand_total, rounding_method), 2)
+		if abs(paid_total - expected_total) > 0.01:
+			frappe.throw(_("Payment amounts must equal the payable total."))
 
 	def validate_terminal_state(self):
 		previous = self.get_doc_before_save()
