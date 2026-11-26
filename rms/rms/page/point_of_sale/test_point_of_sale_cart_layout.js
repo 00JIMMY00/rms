@@ -28,15 +28,17 @@ assert.match(html, /<details class="rms-cart-section is-cancelled">/, 'cancelled
 assert.equal(pos.cartTab,'pending');
 assert.match(html, /data-cart-panel="confirmed" hidden/,'confirmed items have a separate hidden panel');
 assert.match(output['[data-role="cart-tabs"]'].html, /aria-selected="true" data-action="cart-tab" data-tab="pending"/);
-assert.equal(output['[data-role="cart-actions"]'].hidden,true,'Void only appears in the confirmed tab');
+assert.equal(output['[data-action="cancel-confirmed-items"]'].hidden,true,'Void only appears in the confirmed tab');
 pos.cartTab='confirmed'; pos.renderCart();
-assert.equal(output['[data-role="cart-actions"]'].hidden,false);
+assert.equal(output['[data-action="cancel-confirmed-items"]'].hidden,true,'pending additions hide Void even while reviewing the confirmed tab');
 assert.match(output['[data-role="cart"]'].html, /data-cart-panel="pending" hidden/);
 pos.renderCart(); assert.equal(pos.cartTab,'confirmed','autosave and rerenders retain the selected tab');
 pos.cartTab='pending'; pos.renderCart();
 assert.equal(output['[data-role="ticket"]'].text,'In progress','do not repeat the long order ID in the header badge');
-assert.match(output['[data-role="cart-actions"]'].html, />Void<\/button>/);
+assert.doesNotMatch(pos.cartTotalsHTML({grand_total:100,tax_total:14}), /Taxes|Subtotal|details/, "rail shows only the total");
 assert.ok(!html.includes('Nos'), 'cart rows omit units of measure');
+assert.match(html, /dir="ltr" aria-label="Quantity: 4"/);
+assert.match(html, /<strong><bdi>200<\/bdi><\/strong>/, 'keep the amount in its own bidi-isolated cell');
 // Autosave persists additions before they are sent to preparation. Persistence
 // must never change their confirmation status or hide their controls.
 Object.assign(pos.state.cart[1], {order_item_name:'SAVED-NEW',saved_to_order:true});
@@ -70,11 +72,11 @@ assert.ok(!output['[data-role="cart"]'].html.includes('is-pending'), 'only sendi
 assert.equal(output['[data-action="checkout"]'].text,'Take Payment');
 assert.equal(pos.cartTab,'confirmed','sending the final pending row opens the confirmed tab');
 pos.guestCheckState = {guest_checks:[{name:'GUEST-1'}]}; pos.renderCart();
-assert.equal(output['[data-role="cart-actions"]'].hidden,true, 'confirmed guest allocations protect the cancellation flow');
+assert.equal(output['[data-action="cancel-confirmed-items"]'].hidden,true, 'confirmed guest allocations protect the cancellation flow');
 pos.guestCheckState = null; context.frappe.user_roles=['POS Cashier']; pos.renderCart();
-assert.equal(output['[data-role="cart-actions"]'].hidden,false,'cashiers can request void with backend manager authorization');
+assert.equal(output['[data-action="cancel-confirmed-items"]'].hidden,false,'cashiers can request void with backend manager authorization');
 context.frappe.user_roles=['POS Manager']; pos.state.order_status='Paid'; pos.renderCart();
-assert.equal(output['[data-role="cart-actions"]'].hidden,true);
+assert.equal(output['[data-action="cancel-confirmed-items"]'].hidden,true);
 assert.equal(output['[data-action="checkout"]'].disabled,true);
 console.log('PASS: new items first, stable row actions, compact confirmed rows, one bulk action, collapsed cancellations and permission restrictions.');
 

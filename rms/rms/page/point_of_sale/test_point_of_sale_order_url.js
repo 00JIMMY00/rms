@@ -19,7 +19,7 @@ function register() {
  const pos = Object.create(context.POS.prototype);
  pos.state = { store: 'STORE-1', session: { name: 'SESSION-1' }, permissions: { can_checkout: true }, order_types: [], cart: [] };
  pos.saveQueue = Promise.resolve();
- pos.page = { main: { find: () => ({ prop() { return this; } }) } };
+ pos.page = { main: { find: () => ({ prop() { return this; }, val() { return this; } }) } };
  pos.render = pos.renderCart = pos.renderFields = () => {};
  pos.loadCatalog = pos.loadContextDetails = async () => {};
  pos.showError = error => { throw error; };

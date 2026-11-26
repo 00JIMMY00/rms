@@ -28,6 +28,7 @@ function createPOS() {
 			html(value) { field.html = value; return node; },
 			text(value) { field.text = value; return node; },
 			prop(key, value) { field[key] = value; return node; },
+			val(value) { field.value = value; return node; },
 			each() { return node; },
 			toggle() { return node; },
 		};

@@ -44,9 +44,11 @@ class RMSPointOfSale {
 			discount_type: "Percentage", discount_scope: "Net Total", discount_value: 0, discount_reason: "" };
 		this.catalogRequestId = 0;
 		this.saveQueue = Promise.resolve();
+		this.contentView = "menu";
+		this.pendingContentView = this.readContentView();
 		const orderRoute = this.readOrderRoute();
 		this.pendingLaunchContext = orderRoute ? null : this.readLaunchContext();
-		this.pendingResumeContext = orderRoute || this.pendingLaunchContext ? null : this.readResumeContext();
+		this.pendingResumeContext = orderRoute || (this.pendingLaunchContext && this.pendingLaunchContext.view !== "tables") ? null : this.readResumeContext();
 		this.mount();
 		this.page.main.toggleClass("rms-pos-restoring", Boolean(orderRoute || this.pendingResumeContext || this.pendingLaunchContext?.order_name));
 		this.page.main.append(`<div class="rms-pos-restore-status" role="status"><span class="rms-pos-loading-spinner" aria-hidden="true"></span><span>${__("Restoring your order…")}</span></div>`);
@@ -54,7 +56,16 @@ class RMSPointOfSale {
 		this.startOrderSync();
 		window.rmsPointOfSale = this;
 		if (orderRoute) this.openOrderRoute(orderRoute);
-		else this.loadBootstrap(this.pendingLaunchContext?.store || this.pendingResumeContext?.store || null);
+		else this.loadBootstrap(this.pendingLaunchContext?.store || this.pendingResumeContext?.store || this.pendingContentView?.store || null);
+	}
+
+	contentViewKey() { return `rms-pos-content-view:${frappe.session?.user || ""}`; }
+
+	readContentView() {
+		try {
+			const value = JSON.parse(sessionStorage.getItem(this.contentViewKey()) || "null");
+			return value?.view === "tables" && typeof value.store === "string" ? value : null;
+		} catch (_) { return null; }
 	}
 
 	readOrderRoute() {
@@ -100,6 +111,7 @@ class RMSPointOfSale {
 		try {
 			await this.flushDraftSave();
 			// Resolve the branch through the existing permission-checked order API.
+			this.setContentView("menu");
 			const order = await this.call("get_order", { order_name: route.order_name });
 			this.pendingLaunchContext = null;
 			try { sessionStorage.removeItem("rms-pos-launch-context"); } catch (_) {}
@@ -168,7 +180,7 @@ class RMSPointOfSale {
 	}
 
 	call(method, args = {}, options = {}) {
-		return new Promise((resolve, reject) => frappe.call({ method: `rms.api.pos.${method}`, args, silent: Boolean(options.silent),
+		return new Promise((resolve, reject) => frappe.call({ method: method.includes(".") ? method : `rms.api.pos.${method}`, args, silent: Boolean(options.silent),
 			callback: (r) => resolve(r.message), error: (e) => { if (options.silent) e.rmsSilent = true; reject(e); } }));
 	}
 
@@ -313,13 +325,12 @@ class RMSPointOfSale {
 						</div>
 					</main>
 					<aside class="rms-pos-cart" aria-label="${__("Current order")}">
-						<div class="rms-pos-cart-head"><div><span class="rms-pos-eyebrow">${__("CURRENT ORDER")}</span><h2 data-role="cart-title">${__("New sale")}</h2></div><div class="rms-pos-cart-head-tools"><button class="rms-pos-new-sale" data-action="new-sale" hidden>${__("New sale")}</button><span class="rms-pos-ticket" data-role="ticket">${__("Draft")}</span></div></div>
-						<div class="rms-pos-order-meta"><label>${__("Customer")}<button class="rms-pos-meta-button" data-action="customer">${__("Walk-in Customer")}</button></label><div class="rms-pos-table-fields" data-role="dining-wrap" hidden><label>${__("Dining Area")}<select data-select="dining_area" disabled><option value="">${__("Not applicable")}</option></select></label><label>${__("Table")}<select data-select="dining_table" disabled><option value="">${__("Not applicable")}</option></select></label></div><label data-role="reference-wrap" hidden>${__("External Reference")}<input data-input="external_reference" /></label></div>
-						<div class="rms-pos-order-comment"><button type="button" data-action="order-notes">${__("Order comment")}</button><p data-role="order-notes" hidden></p></div>
+						<div class="rms-pos-cart-head"><div class="rms-pos-head-context"><h2 data-role="cart-title">${__("New sale")}</h2><span class="rms-pos-table-label" data-role="dining-wrap" hidden><span data-role="cart-table"></span></span><small class="rms-pos-visit-limit" data-role="visit-limit" hidden></small></div><div class="rms-pos-cart-head-tools" role="group" aria-label="${__("Order actions")}"><button type="button" class="rms-pos-new-sale" data-action="new-sale" title="${__("New order")}" aria-label="${__("New order")}" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>${__("New order")}</span></button><button type="button" class="rms-pos-comment-button" data-action="order-notes" title="${__("Order comment")}" aria-label="${__("Order comment")}" aria-haspopup="dialog">${this.commentIconHTML()}</button><button type="button" class="rms-pos-void" data-action="cancel-confirmed-items" title="${__("Void")}" aria-label="${__("Void")}" aria-haspopup="dialog" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m9 9 6 6m0-6-6 6"/></svg><span>${__("Void")}</span></button><span class="rms-pos-ticket" data-role="ticket">${__("Draft")}</span></div></div>
+						<div class="rms-pos-order-meta"><label><span class="sr-only">${__("Customer")}</span><button class="rms-pos-meta-button" data-action="customer" aria-label="${__("Customer")}">${__("Walk-in Customer")}</button></label><label data-role="reference-wrap" hidden>${__("External Reference")}<input data-input="external_reference" /></label></div>
+						<div class="rms-pos-order-comment" data-role="order-comment-wrap" hidden><p data-role="order-notes" hidden></p></div>
 						<div class="rms-pos-cart-tabs" data-role="cart-tabs" role="tablist" aria-label="${__("Order items")}"></div>
-						<div class="rms-pos-cart-actions" data-role="cart-actions" hidden></div>
 						<div class="rms-pos-cart-lines" data-role="cart" aria-live="polite"></div>
-						<div class="rms-pos-summary"><div><span>${__("Subtotal")}</span><b data-role="subtotal">—</b></div><div><span>${__("Discount")}</span><b data-role="discount">—</b></div><button type="button" class="rms-pos-discount" data-action="discount" disabled>${__("Apply discount")}</button><div><span>${__("Taxes")}</span><b data-role="taxes">—</b></div><div data-role="rounding-row" hidden><span>${__("Rounding adjustment")}</span><b data-role="rounding-adjustment">—</b></div><div class="rms-pos-total"><span>${__("Total")}</span><strong data-role="total">—</strong></div><button class="rms-pos-checkout" data-action="checkout" disabled>${__("Continue to payment")}</button></div>
+						<div class="rms-pos-summary">${this.cartTotalsHTML()}<button class="rms-pos-checkout" data-action="checkout" disabled>${__("Confirm")}</button><button class="rms-pos-close-empty" data-action="close-empty-table" hidden>${__("Close table")}</button></div>
 					</aside>
 				</div>
 			</section>
@@ -416,11 +427,21 @@ class RMSPointOfSale {
 			if (["store", "brand", "order_type"].includes(key)) this.renderSaleSetup();
 			if (key === "store") this.onStoreChanged();
 			if (key === "brand") this.onBrandChanged();
-			if (key === "order_type") this.onOrderTypeChanged();
+			if (key === "order_type") await this.onOrderTypeChanged();
 			if (key === "dining_area") this.onDiningAreaChanged();
-			if (key === "dining_table") this.saveDraft();
+			if (key === "dining_table") {
+				this.saveDraft();
+				const picker = root.querySelector('[data-role="dining-wrap"]');
+				if (picker) picker.open = false;
+				this.renderFields();
+			}
 		});
 		root.addEventListener("input", async (event) => {
+			if (this.contentView === "tables" && event.target.matches("[data-search]")) {
+				this.tableFloor.state.search = event.target.value.trim().toLocaleLowerCase();
+				this.tableFloor.render();
+				return;
+			}
 			if (!await this.ensureCurrentOrderActive()) return;
 			if (event.target.matches("[data-guest-share]")) {
 				event.target.value = Math.max(0, Math.min(Number(this.paymentTotal || 0), Number(event.target.value || 0))).toFixed(2);
@@ -470,7 +491,7 @@ class RMSPointOfSale {
 				return;
 			}
 			if (!event.target.matches("[data-search]")) return;
-			if (event.key === "Enter") { event.preventDefault(); this.searchAndAddBarcode(); }
+			if (event.key === "Enter") { event.preventDefault(); if (this.contentView !== "tables") this.searchAndAddBarcode(); }
 		});
 		root.addEventListener("click", (event) => { if (event.target.matches("[data-split-dialog-backdrop]")) this.closePaymentSplitDialog(); });
 		root.addEventListener("click", (event) => { if (event.target.matches("[data-payment-items-backdrop]")) this.closePaymentItemsDialog(); });
@@ -500,7 +521,7 @@ class RMSPointOfSale {
 			if (navToggle) { this.setCategoryNavigationOpen(!this.categoryNavOpen, true); return; }
 			if (event.target.closest("[data-category-nav-close]")) { this.setCategoryNavigationOpen(false, true); return; }
 			const modeButton = event.target.closest("[data-catalog-mode]");
-			if (modeButton) { this.state.catalog_mode = modeButton.dataset.catalogMode; return this.selectCategory(this.state.category, modeButton); }
+			if (modeButton) { this.setContentView("menu"); this.state.catalog_mode = modeButton.dataset.catalogMode; return this.selectCategory(this.state.category, modeButton); }
 			const categoryBack = event.target.closest("[data-category-back]");
 			if (categoryBack) return this.selectCategory(categoryBack.dataset.categoryBack, categoryBack);
 			const button = event.target.closest("[data-action]");
@@ -524,6 +545,7 @@ class RMSPointOfSale {
 	}
 
 	async loadBootstrap(store = null) {
+		const tableFloor = this.tableFloor;
 		this.state.bootstrap_loading = true;
 		this.state.restoring_order = Boolean(this.pendingResumeContext || this.pendingLaunchContext?.order_name || this.openingOrderRoute);
 		try {
@@ -583,6 +605,8 @@ class RMSPointOfSale {
 				this.state.bootstrap_loading = false;
 				this.render();
 			}
+			if (this.pendingContentView?.view === "tables") await this.showTableMap();
+			else if (tableFloor && this.contentView === "tables") await tableFloor.load(true);
 			return true;
 		} catch (error) {
 			this.state.bootstrap_loading = false;
@@ -603,15 +627,38 @@ class RMSPointOfSale {
 
 	async applyLaunchContext() {
 		const context = this.pendingLaunchContext;
-		if (!context || context.store !== this.state.store || !this.state.session || this.state.session.status !== "Open") return;
+		if (!context || (context.store !== this.state.store && !(context.view === "tables" && !context.store))) return;
+		if (context.view === "tables") {
+			this.pendingLaunchContext = null;
+			sessionStorage.removeItem("rms-pos-launch-context");
+			return this.showTableMap();
+		}
+		if (!this.state.session || this.state.session.status !== "Open") return;
+		// Finish the previous check before switching tables or loading another check.
+		await this.flushDraftSave();
 		this.pendingLaunchContext = null;
 		sessionStorage.removeItem("rms-pos-launch-context");
 		if (context.order_name) {
 			const order = await this.call("get_order", { order_name: context.order_name });
 			await this.loadOrder(order);
-			if (context.action === "pay") await this.checkout();
+			this.setContentView("menu");
+			this.page.main.find("[data-screen]").prop("hidden", true);
+			this.page.main.find(".rms-pos-shell").prop("hidden", false);
+			if (["pay", "split"].includes(context.action)) {
+				if (this.hasUnconfirmedItems()) return frappe.msgprint(__("Confirm or remove unconfirmed items before using order actions."));
+				await this.checkout();
+				if (["Confirmed", "In Preparation", "Ready"].includes(this.state.order_status) && this.currentOrderScreen !== "payment") await this.checkout();
+				if (context.action === "split" && this.currentOrderScreen === "payment") {
+					if (this.guestSplitFinalized) {
+						const index = this.guestCheckState?.guest_checks?.findIndex(row => row.status === "Open" && row.items?.length > 1) ?? -1;
+						if (index >= 0) this.openGuestCheckResplit(index);
+					} else this.openPaymentSplitDialog();
+				}
+			}
 			return;
 		}
+		if (context.dining_table) this.resetSale();
+		this.setContentView("menu");
 		this.state.dining_area = context.dining_area || null;
 		this.state.dining_table = context.dining_table || null;
 		if (context.dining_table) {
@@ -630,6 +677,10 @@ class RMSPointOfSale {
 			return this.openOrderRoute(route);
 		}
 		if (!this.pendingLaunchContext) this.pendingLaunchContext = this.readLaunchContext();
+		if (this.pendingLaunchContext?.store && this.pendingLaunchContext.store !== this.state.store) {
+			await this.flushDraftSave();
+			return this.loadBootstrap(this.pendingLaunchContext.store);
+		}
 		await this.applyLaunchContext();
 	}
 
@@ -667,11 +718,20 @@ class RMSPointOfSale {
 	}
 
 	async onOrderTypeChanged() {
-		this.state.cart = []; this.state.order_name = null;
+		// Type selection is available only before an order has been started.
+		// Keep the same header active while the floor replaces the catalog.
+		if (this.state.cart.length || this.state.order_name) return;
+		this.state.dining_area = null; this.state.dining_table = null;
 		this.currentOrderScreen = "sale"; this.watchCurrentOrder();
 		const selectedType = this.state.order_types.find((row) => row.name === this.state.order_type);
-		if (!selectedType?.require_table) { this.state.dining_area = null; this.state.dining_table = null; }
-		this.updateOrderTypeFields(); await this.loadTables(); this.loadCatalog(); this.saveDraft();
+		this.updateOrderTypeFields();
+		if (selectedType?.require_table) {
+			await this.showTableMap({ fromOrderType: true });
+			this.loadCatalog();
+		} else {
+			this.setContentView("menu");
+			await this.loadTables(); this.loadCatalog();
+		}
 	}
 
 	async loadTables() {
@@ -768,7 +828,7 @@ class RMSPointOfSale {
 		if (!this.state.session) return frappe.msgprint(__("Open a cashier session first."));
 		if (!await this.ensureCurrentOrderActive()) return;
 		if (["Paid", "Cancelled"].includes(this.state.order_status)) return frappe.msgprint(__("Start a new sale before adding products."));
-		if (this.state.order_types.find((row) => row.name === this.state.order_type)?.require_table && !this.state.dining_table) return frappe.msgprint(__("Choose a dining table before adding items to a Dine In order."));
+		if (this.state.order_types.find((row) => row.name === this.state.order_type)?.require_table && !this.state.dining_table) return this.showTableMap();
 		try {
 			const config = configured || await this.call("get_product_configuration", { product: productName,
 				store: this.state.store, brand: this.state.brand, order_type: this.state.order_type });
@@ -1077,7 +1137,7 @@ class RMSPointOfSale {
 	}
 
 	async persistDraft() {
-		if (["Paid", "Cancelled"].includes(this.state.order_status) || !this.state.session || !this.state.cart.length || !this.state.store || !this.state.brand || !this.state.order_type) return null;
+		if (["Paid", "Cancelled"].includes(this.state.order_status) || !this.state.session || (!this.state.cart.length && !this.canSaveEmptyTable()) || !this.state.store || !this.state.brand || !this.state.order_type) return null;
 		const revision = this.saleRevision || 0;
 		const save = async () => {
 			if (revision !== (this.saleRevision || 0) || ["Paid", "Cancelled"].includes(this.state.order_status)) return null;
@@ -1124,7 +1184,7 @@ class RMSPointOfSale {
 		this.cartTab = null; this.cartPendingCount = 0;
 		clearTimeout(this.saveTimer); this.saveTimer = null;
 		this.saleRevision = (this.saleRevision || 0) + 1;
-		this.state.order_name = null; this.state.order_status = null; this.state.cart = []; this.state.totals = null;
+		this.state.order_name = null; this.state.order_status = null; this.state.reservation_deposit_balance = 0; this.state.expected_departure = null; this.state.cart = []; this.state.totals = null;
 		this.currentOrderScreen = "sale";
 		this.orderModified = null; this.syncedOrderItems = new Map(); this.syncedOrderMeta = null;
 		this.watchCurrentOrder();
@@ -1277,6 +1337,8 @@ class RMSPointOfSale {
 			}
 		}
 		this.state.order_status = order.status;
+		this.state.reservation_deposit_balance = Number(order.reservation_deposit_balance || 0);
+		this.state.expected_departure = order.expected_departure || null;
 		const additions = original.filter(row => !row.saved_to_order && !row.sent_to_kitchen);
 		this.state.cart = [...saved, ...additions];
 		this.state.totals = order;
@@ -1365,7 +1427,7 @@ class RMSPointOfSale {
 	}
 
 	async saveDraft() {
-		if (["Paid", "Cancelled"].includes(this.state.order_status) || !this.state.session || !this.state.cart.length || !this.state.store || !this.state.brand || !this.state.order_type) return;
+		if (["Paid", "Cancelled"].includes(this.state.order_status) || !this.state.session || (!this.state.cart.length && !this.canSaveEmptyTable()) || !this.state.store || !this.state.brand || !this.state.order_type) return;
 		clearTimeout(this.saveTimer);
 		this.saveTimer = setTimeout(async () => {
 			this.saveTimer = null;
@@ -1379,6 +1441,11 @@ class RMSPointOfSale {
 		this.saveTimer = null;
 		if (hasScheduledSave) await this.persistDraft();
 		else await this.saveQueue;
+	}
+
+	canSaveEmptyTable() {
+		return Boolean(this.state.order_name && this.state.dining_table && !this.state.cross_session_edit
+			&& ["Open", "Pending Confirmation"].includes(this.state.order_status));
 	}
 
 	async editDiscount() {
@@ -1442,12 +1509,15 @@ class RMSPointOfSale {
 		if (action === "refresh-open-orders") return this.showOpenOrders();
 		if (action === "refresh-tables") return this.showTableMap();
 		if (action === "open-pos-order") {
-			try { const order = await this.call("get_order", { order_name: data.order }); await this.loadOrder(order); this.page.main.find("[data-screen]").prop("hidden", true); this.page.main.find(".rms-pos-shell").prop("hidden", false); }
+			try { const order = await this.call("get_order", { order_name: data.order }); await this.loadOrder(order); this.setContentView("menu"); this.page.main.find("[data-screen]").prop("hidden", true); this.page.main.find(".rms-pos-shell").prop("hidden", false); }
 			catch (error) { this.showError(error); }
 			return;
 		}
 		if (action === "view-open-order") {
 			try { return await this.showOpenOrderOverview(data.order); } catch (error) { return this.showError(error); }
+		}
+		if (action === "void-pos-order") {
+			return this.cancelConfirmedItems([], { orderName: data.order, onComplete: () => this.showOpenOrders() });
 		}
 		if (action === "cancel-pos-order") {
 			try {
@@ -1531,6 +1601,7 @@ class RMSPointOfSale {
 		if (action === "returns") return this.startReturnFlow();
 		if (action === "operation-approvals") return this.showOperationApprovals();
 		if (action === "discount") return this.editDiscount();
+		if (action === "close-empty-table") return this.closeEmptyTable();
 		if (action === "notes") return this.editItemNotes(data.index);
 		if (action === "order-notes") return this.editOrderNotes();
 		if (action === "quantity") { const line = this.state.cart[Number(data.index)]; if (!line || line.read_only || line.sent_to_kitchen) return; const step = line.must_be_whole_number ? 1 : 0.1; line.qty = Math.max(0, Math.round((line.qty + Number(data.delta) * step) * 1000) / 1000); if (!line.qty) this.state.cart.splice(Number(data.index), 1); this.renderCart(); return this.saveDraft(); }
@@ -1854,19 +1925,20 @@ class RMSPointOfSale {
 		if (!await this.ensureCurrentOrderActive()) return;
 		if (!this.state.cart.length) return;
 		if (this.state.cross_session_edit && ["Confirmed", "In Preparation", "Ready"].includes(this.state.order_status)
-			&& !this.state.cart.some((row) => !row.sent_to_kitchen)) {
+			&& !this.hasUnconfirmedItems()) {
 			if (!this.state.permissions.can_approve_discount) return frappe.msgprint(__("Only the cashier who opened this order can take its payment."));
 			this.paymentApprovalOnly = true;
 			return this.showPaymentScreen();
 		}
 		this.paymentApprovalOnly = false;
-		if (this.state.order_types.find((row) => row.name === this.state.order_type)?.require_table && !this.state.dining_table) return frappe.msgprint(__("Select a table for this Order Type."));
+		if (this.state.order_types.find((row) => row.name === this.state.order_type)?.require_table && !this.state.dining_table) return this.showTableMap();
 		if (this.state.order_types.find((row) => row.name === this.state.order_type)?.require_external_reference && !this.state.external_reference) return frappe.msgprint(__("Enter the required external reference."));
-		clearTimeout(this.saveTimer);
 		try {
 			const revision = this.saleRevision || 0;
+			await this.flushDraftSave();
+			if (revision !== (this.saleRevision || 0)) return;
 			const confirmed = ["Confirmed", "In Preparation", "Ready"].includes(this.state.order_status);
-			const hasUnconfirmedItems = this.state.cart.some((row) => !row.sent_to_kitchen);
+			const hasUnconfirmedItems = this.hasUnconfirmedItems();
 			const saved = confirmed && !hasUnconfirmedItems ? null : await this.persistDraft();
 			if (revision !== (this.saleRevision || 0)) return;
 			if (!saved && (!confirmed || hasUnconfirmedItems)) return;
@@ -1882,6 +1954,10 @@ class RMSPointOfSale {
 		} catch (error) { this.showError(error); }
 	}
 
+	hasUnconfirmedItems(items = this.state.cart) {
+		return (items || []).some(row => !Number(row.sent_to_kitchen) && Number(row.qty || 0) - Number(row.cancelled_qty || 0) > 0);
+	}
+
 	customerSearchDefaults(search = "") {
 		const value = search.trim();
 		const digits = value.replace(/[٠-٩۰-۹]/g, char => String(char.charCodeAt(0) - (char <= "٩" ? 1632 : 1776)));
@@ -1889,16 +1965,19 @@ class RMSPointOfSale {
 			? { mobile_no: digits, customer_name: "" } : { customer_name: value, mobile_no: "" };
 	}
 
-	async chooseCustomer() {
-		let requestId = 0, searchTimer;
-		const dialog = new frappe.ui.Dialog({ title: __("Choose Customer"), size: "small", fields: [
-			{ fieldtype: "HTML", fieldname: "customer_picker", options: `
+	customerPickerHTML() {
+		return `
 				<div class="rms-customer-picker">
 					<div class="rms-customer-search-row"><input type="text" class="form-control" data-customer-search autocomplete="off" aria-label="${__("Customer")}"><button type="button" class="rms-customer-icon" data-clear-customer aria-label="${__("Clear")}">×</button></div>
 					<div class="rms-customer-results" role="listbox" aria-label="${__("Customers")}"></div>
 					<button type="button" class="rms-customer-add" data-new-customer data-new-customer-main><span class="rms-customer-plus">+</span>${__("New Customer")}</button>
 					<button type="button" class="rms-customer-add" data-edit-customer hidden>${__("Edit Customer")}</button>
-				</div>` },
+				</div>`;
+	}
+
+	async chooseCustomer() {
+		const dialog = new frappe.ui.Dialog({ title: __("Choose Customer"), size: "small", fields: [
+			{ fieldtype: "HTML", fieldname: "customer_picker", options: this.customerPickerHTML() },
 		], primary_action_label: __("Apply"), primary_action: async () => {
 			if (!await this.ensureCurrentOrderActive()) { dialog.hide(); return; }
 			this.state.customer = dialog.selectedCustomer || null;
@@ -1908,34 +1987,45 @@ class RMSPointOfSale {
 			this.state.customer = null; dialog.hide(); this.renderCart(); this.saveDraft();
 		} });
 		dialog.$wrapper.addClass("rms-pos-customer-dialog rms-pos-customer-chooser");
+		dialog.show();
+		await this.setupCustomerPicker(dialog, { customer: this.state.customer });
+		return dialog;
+	}
+
+	async setupCustomerPicker(dialog, { customer = null, allowWalkIn = false, autofocus = true, compact = false } = {}) {
+		let requestId = 0, searchTimer;
 		const root = dialog.fields_dict.customer_picker.$wrapper;
 		const input = root.find("[data-customer-search]"), results = root.find(".rms-customer-results");
-		dialog.selectedCustomer = this.state.customer;
+		dialog.selectedCustomer = customer;
 		root.find("[data-edit-customer]").prop("hidden", !dialog.selectedCustomer);
 		dialog.selectCustomer = customer => {
 			dialog.selectedCustomer = customer.name;
 			root.find("[data-edit-customer]").prop("hidden", false);
-			root.find("[data-new-customer-main]").show();
+			root.find("[data-new-customer-main]").toggle(!compact);
 			input.val(customer.customer_name || customer.name);
 			++requestId;
 			clearTimeout(searchTimer);
-			results.html(`<div class="rms-customer-selected"><strong>${this.escape(customer.customer_name || customer.name)}</strong><span>${this.escape(customer.mobile_no || customer.name)}</span></div>`);
+			results.empty();
+			results.prop("hidden", true);
 			dialog.enable_primary_action();
 		};
 		const search = async () => {
 			const current = ++requestId, value = input.val().trim();
+			results.prop("hidden", false);
 			results.html(`<div class="rms-customer-empty">${__("Loading...")}</div>`);
 			try {
 				const customers = await this.call("get_customers", { search: value, limit: 30 });
 				if (current !== requestId || !dialog.is_visible) return;
 				root.find("[data-new-customer-main]").toggle(Boolean(customers.length) || !value);
-				results.html(customers.length ? customers.map((customer, index) => `<button type="button" role="option" aria-selected="${customer.name === dialog.selectedCustomer}" class="rms-customer-result" data-customer-index="${index}"><strong>${this.escape(customer.customer_name)}</strong><span>${this.escape(customer.mobile_no || customer.name)}</span></button>`).join("")
+				results.html(customers.length ? customers.map((customer, index) => `<button type="button" role="option" aria-selected="${customer.name === dialog.selectedCustomer}" class="rms-customer-result" data-customer-index="${index}"><strong>${this.escape(customer.customer_name)}</strong><span>${this.escape(customer.mobile_no || (customer.name !== customer.customer_name ? customer.name : ""))}</span></button>`).join("")
 					: `<div class="rms-customer-empty">${__("No customers found")}</div><button type="button" class="rms-customer-add is-inline" data-new-customer><span class="rms-customer-plus">+</span>${__("New Customer")} <strong>${this.escape(value)}</strong></button>`);
 				results.find("[data-customer-index]").on("click", event => dialog.selectCustomer(customers[Number(event.currentTarget.dataset.customerIndex)]));
 			} catch (error) { if (current === requestId) { results.empty(); this.showError(error); } }
 		};
 		input.on("input", () => {
-			dialog.selectedCustomer = null; dialog.disable_primary_action();
+			dialog.selectedCustomer = null;
+			if (allowWalkIn && !input.val().trim()) dialog.enable_primary_action();
+			else dialog.disable_primary_action();
 			root.find("[data-edit-customer]").prop("hidden", true);
 			++requestId; clearTimeout(searchTimer); searchTimer = setTimeout(search, 180);
 		});
@@ -1945,11 +2035,14 @@ class RMSPointOfSale {
 		root.on("click", "[data-new-customer]", () => this.createCustomer(dialog, input.val()));
 		root.find("[data-edit-customer]").on("click", () => this.editCustomer(dialog, dialog.selectedCustomer));
 		root.find("[data-clear-customer]").on("click", () => { input.val("").trigger("input").trigger("focus"); });
-		dialog.onhide = () => { ++requestId; clearTimeout(searchTimer); };
-		dialog.show();
-		input.val(this.state.customer || "");
-		await search();
-		input.trigger("focus");
+		const previousOnHide = dialog.onhide;
+		dialog.onhide = () => { ++requestId; clearTimeout(searchTimer); previousOnHide?.(); };
+		input.val(customer || "");
+		if (customer && compact) {
+			root.find("[data-new-customer-main]").hide(); results.empty().prop("hidden", true);
+			dialog.enable_primary_action();
+		} else await search();
+		if (autofocus) input.trigger("focus");
 	}
 
 	async editCustomer(chooser, customer) {
@@ -2105,7 +2198,7 @@ class RMSPointOfSale {
 	async showOpenOrders() {
 		if (!this.state.store) return frappe.msgprint(__("Select a Store to view open orders."));
 		let orders;
-		try { orders = await this.call("get_store_open_orders", { store: this.state.store }); } catch (error) { return this.showError(error); }
+		try { await this.flushDraftSave(); orders = await this.call("get_store_open_orders", { store: this.state.store }); } catch (error) { return this.showError(error); }
 		this.openOrders = orders || [];
 		this.renderOpenOrders();
 		this.page.main.find(".rms-pos-shell").prop("hidden", true);
@@ -2124,11 +2217,11 @@ class RMSPointOfSale {
 			const preparationStatus = pendingCount || sentCount
 				? `${sentCount ? `<em class="is-confirmed">${this.escape(__("Sent to preparation"))} · ${sentCount}</em>` : ""}${pendingCount ? `<em class="is-pending">${this.escape(__("Needs confirmation"))} · ${pendingCount}</em>` : ""}`
 				: `<em class="${pending ? "is-pending" : "is-confirmed"}">${pending ? __("Needs confirmation") : __("Sent to preparation")}</em>`;
-			const canSplit = ["Open", "Pending Confirmation"].includes(row.status);
-			const moveAction = own && row.dining_table && this.state.permissions.can_transfer_tables ? `<button class="rms-screen-secondary" data-action="transfer-open-order" data-order="${this.escape(row.name)}">${__("Transfer")}</button>` : "";
+			const canSplit = !pendingCount && sentCount > 1 && ["Confirmed", "In Preparation", "Ready"].includes(row.status);
+			const moveAction = own && !pendingCount && row.dining_table && this.state.permissions.can_transfer_tables ? `<button class="rms-screen-secondary" data-action="transfer-open-order" data-order="${this.escape(row.name)}">${__("Transfer")}</button>` : "";
 			const splitAction = own && canSplit && this.state.permissions.can_split_orders ? `<button class="rms-screen-secondary" data-action="split-open-order" data-order="${this.escape(row.name)}">${__("Split items")}</button>` : "";
-			const openAction = canEdit ? `<button class="rms-screen-primary" data-action="open-pos-order" data-order="${this.escape(row.name)}">${own ? __("Open order") : __("Open to add items")}</button>` : `<button class="rms-screen-secondary" data-action="view-open-order" data-order="${this.escape(row.name)}">${__("View details")}</button>`;
-			return `<article class="rms-open-order-card"><div class="rms-open-order-info"><b>${this.escape(row.check_label || this.orderNumber(row.name))}</b><span>${this.escape(row.order_type || "")} · ${row.dining_table ? this.escape(row.dining_table) : __("No table")}</span><small>${this.escape(this.orderNumber(row.name))} · ${this.escape(row.cashier || "")}</small><div class="rms-open-order-prep">${preparationStatus}</div></div><strong class="rms-open-order-total">${this.currency(this.roundPosPayable(row.grand_total, this.getPosRoundingMethod(row.restaurant_brand)))}</strong><div class="rms-open-order-actions">${openAction}${splitAction}${moveAction}${own && this.state.permissions.can_cancel_orders ? `<button class="rms-screen-danger" data-action="cancel-pos-order" data-order="${this.escape(row.name)}">${__("Cancel")}</button>` : ""}</div></article>`;
+			const openAction = canEdit ? `<button class="rms-screen-primary" data-action="open-pos-order" data-order="${this.escape(row.name)}">${pendingCount ? __("Confirm") : own ? __("Open order") : __("Open to add items")}</button>` : `<button class="rms-screen-secondary" data-action="view-open-order" data-order="${this.escape(row.name)}">${__("View details")}</button>`;
+			return `<article class="rms-open-order-card"><div class="rms-open-order-info"><b>${this.escape(row.check_label || this.orderNumber(row.name))}</b><span>${this.escape(row.order_type || "")} · ${row.dining_table ? this.escape(row.dining_table) : __("No table")}</span><small>${this.escape(this.orderNumber(row.name))} · ${this.escape(row.cashier || "")}</small><div class="rms-open-order-prep">${preparationStatus}</div></div><strong class="rms-open-order-total">${this.currency(this.roundPosPayable(row.grand_total, this.getPosRoundingMethod(row.restaurant_brand)))}</strong><div class="rms-open-order-actions">${openAction}${splitAction}${moveAction}${own && !pendingCount && !pending ? `<button class="rms-screen-danger" data-action="void-pos-order" data-order="${this.escape(row.name)}">${__("Void")}</button>` : own && !pendingCount && this.state.permissions.can_cancel_orders ? `<button class="rms-screen-danger" data-action="cancel-pos-order" data-order="${this.escape(row.name)}">${__("Cancel")}</button>` : ""}</div></article>`;
 		}).join("");
 		this.page.main.find('[data-screen="open-orders"]').html(`<header class="rms-workspace-head"><button class="rms-screen-back" data-action="screen-back">‹ ${__("Back to register")}</button><div><span class="rms-pos-eyebrow">${__("ACTIVE CHECKS")}</span><h1>${__("Open Orders")}</h1><p>${__("Open any active dine-in or takeaway order to add items and confirm them for preparation.")}</p></div><span class="rms-open-count">${orders.length} ${__("orders")}</span></header><div class="rms-open-orders-toolbar"><input type="search" data-open-order-search placeholder="${__("Search check, table, order type or cashier")}"><button class="rms-screen-secondary" data-action="refresh-open-orders">${__("Refresh")}</button></div><div class="rms-open-orders-list">${cards || `<div class="rms-screen-empty">${__("No matching open orders.")}</div>`}</div>`);
 	}
@@ -2136,6 +2229,7 @@ class RMSPointOfSale {
 	async transferOpenOrder(orderName) {
 		try {
 			const order = await this.call("get_order", { order_name: orderName });
+			if (this.hasUnconfirmedItems(order.items)) return frappe.msgprint(__("Confirm or remove unconfirmed items before using order actions."));
 			const tables = (await this.call("get_tables", { store: order.store })).filter((row) => !row.occupied || row.name === order.dining_table);
 			const choices = tables.filter((row) => row.name !== order.dining_table);
 			if (!choices.length) return frappe.msgprint(__("No available destination tables."));
@@ -2159,6 +2253,11 @@ class RMSPointOfSale {
 	async splitOpenOrder(orderName) {
 		try {
 			const order = await this.call("get_order", { order_name: orderName });
+			if (this.hasUnconfirmedItems(order.items)) return frappe.msgprint(__("Confirm or remove unconfirmed items before using order actions."));
+			if (["Confirmed", "In Preparation", "Ready"].includes(order.status)) {
+				this.pendingLaunchContext = { store: order.store, order_name: order.name, action: "split" };
+				return this.applyLaunchContext();
+			}
 			const requiresTable = Boolean(this.state.order_types.find((row) => row.name === order.order_type)?.require_table);
 			let selectedTable = order.dining_table || null;
 			let tableMarkup = "";
@@ -2188,12 +2287,23 @@ class RMSPointOfSale {
 			});
 		} catch (error) { this.showError(error); }
 	}
-	showPaymentScreen() {
+	async showPaymentScreen() {
+		if (this.hasUnconfirmedItems()) return frappe.msgprint(__("Confirm or remove unconfirmed items before using order actions."));
+		if (this.state.order_name && this.state.reservation_deposit_balance > 0 && !this.paymentApprovalOnly) {
+			const name = this.state.order_name;
+			try {
+				const deposit = await this.call("rms.reservation_payments.get_order_deposit", {order_name:name});
+				if (name !== this.state.order_name) return;
+				this.state.reservation_deposit_balance = Number(deposit.balance || 0);
+			} catch(error) { this.showError(error); return; }
+		}
 		const methods = this.state.payment_config || [];
 		if (!methods.length && !this.paymentApprovalOnly) return frappe.msgprint(__("Configure payment methods on the POS Profile before taking payment."));
 		const guestPayment = this.activeGuestPayment;
 		const rawTotal = guestPayment ? Number(guestPayment.source_total ?? guestPayment.grand_total ?? 0) : Number(this.state.totals?.grand_total || 0);
-		const total = this.roundPosPayable(rawTotal);
+		const invoiceTotal = this.roundPosPayable(rawTotal);
+		this.paymentDepositUsed = Math.min(Number(this.state.reservation_deposit_balance || 0), invoiceTotal);
+		const total = Number((invoiceTotal - this.paymentDepositUsed).toFixed(2));
 		const activeGuestCheck = guestPayment ? this.guestCheckState?.guest_checks?.find((row) => row.name === guestPayment.guest_check_name) : null;
 		this.paymentSourceTotal = rawTotal;
 		this.paymentTotal = total;
@@ -2235,8 +2345,8 @@ class RMSPointOfSale {
 			? `<button type="button" class="rms-screen-secondary" data-action="guest-check-resplit-current">${__("Split items")}</button>` : "";
 		const splitMarkup = guestPayment
 			? `<section class="rms-guest-payment-overview"><div class="rms-guest-payment-overview-head"><h3>${__("Order split")}</h3>${guestResplitButton}</div><div data-guest-payment-progress-container>${this.renderGuestPaymentProgress(Number(this.state.totals?.grand_total || 0))}</div><div data-split-checks-anchor><input type="checkbox" data-split-check-toggle hidden><div class="rms-guest-checks" data-guest-checks><div class="rms-split-toolbar" hidden><div><span>${__("Split by")}</span><div class="rms-split-mode-switch"><button type="button" data-action="payment-split-mode" data-mode="items">${__("By items")}</button><button type="button" data-action="payment-split-mode" data-mode="amount">${__("Equally")}</button></div></div></div><p data-split-description hidden></p><div data-payment-guests>${guests}</div><div class="rms-item-assignments" data-item-assignments hidden></div><p class="rms-split-balance" data-split-balance data-valid="false" aria-live="polite"></p></div></div></section>`
-			: `${this.guestSplitFinalized ? "" : `<div class="rms-split-check-launch"><button type="button" class="rms-screen-secondary" data-action="payment-open-split">${__("Split check")}</button></div>`}<div data-guest-payment-progress-container>${this.renderGuestPaymentProgress(total)}</div><input type="checkbox" data-split-check-toggle hidden><div data-split-checks-anchor><div class="rms-guest-checks" data-guest-checks hidden><div class="rms-split-toolbar"><div><span>${__("Split by")}</span><div class="rms-split-mode-switch" role="group" aria-label="${__("Split by")}"><button type="button" data-action="payment-split-mode" data-mode="items" aria-pressed="${this.paymentSplitMode === "items"}" ${activeOrderItemCount < 2 ? "disabled" : ""}>${__("By items")}</button><button type="button" data-action="payment-split-mode" data-mode="amount" aria-pressed="${this.paymentSplitMode === "amount"}">${__("Equally")}</button></div></div><div class="rms-split-actions"><button type="button" data-action="payment-guest-add">+ ${__("Add person")}</button><button type="button" data-action="payment-guest-remove">− ${__("Remove person")}</button></div></div><p class="rms-split-description" data-split-description>${__("Set each person's share of the bill.")}</p><div data-payment-guests>${guests}</div><div class="rms-item-assignments" data-item-assignments hidden></div><p class="rms-split-balance" data-split-balance data-valid="false" aria-live="polite"></p></div></div>`;
-		this.page.main.find('[data-screen="payment"]').html(`<header class="rms-workspace-head"><button class="rms-screen-back" data-action="payment-back">‹ ${__("Back to order")}</button><div><span class="rms-pos-eyebrow">${approvalOnly ? __("DISCOUNT APPROVAL") : __("CHECKOUT")}</span><h1>${approvalOnly ? __("Approve cashier discount") : __("Take Payment")}</h1><p>${this.escape(this.orderNumber(this.state.order_name))} · ${this.escape(guestPayment?.guest_name || this.state.order_type || "")}</p></div><strong class="rms-payment-total">${this.currency(total)}</strong></header><div class="rms-payment-layout"><section class="rms-payment-panel">${approvalOnly ? "" : `<div class="rms-payment-panel-head"><h2>${__("Payment methods")}</h2>${paymentItemsButton}</div><p>${__("Allocate the total across payment methods or guests.")}</p>`}${discountTools}${approvalOnly ? "" : `<div class="rms-payment-method-list">${methodFields}</div>${splitMarkup}<div class="rms-payment-shortcuts"><span>${__("Suggested payment amounts")}</span><div data-suggested-payment-amounts>${quick}</div></div><div class="rms-payment-sum">${__("Remaining")}: <b data-payment-remaining>${this.currency(total)}</b></div><div class="rms-payment-change" data-payment-change hidden>${__("Change")}: <b data-change-amount>${this.currency(0)}</b></div><div class="rms-payment-actions"><button class="rms-screen-secondary" data-action="payment-print-only">${__("Print only")}</button><button class="rms-screen-secondary" data-action="payment-pay-print">${__("Pay and print")}</button><button class="rms-screen-primary" data-action="payment-pay">${__("Pay only")}</button></div>`}</section>${approvalOnly ? "" : `<section class="rms-payment-panel rms-payment-keypad"><h2>${__("Keypad")}</h2><p>${__("Select an amount field, then enter the amount.")}</p><div>${keys}</div></section>`}</div><div data-discount-dialog-root></div><div data-split-dialog-root></div>`);
+			: `${this.guestSplitFinalized || this.paymentDepositUsed ? "" : `<div class="rms-split-check-launch"><button type="button" class="rms-screen-secondary" data-action="payment-open-split">${__("Split check")}</button></div>`}<div data-guest-payment-progress-container>${this.renderGuestPaymentProgress(total)}</div><input type="checkbox" data-split-check-toggle hidden><div data-split-checks-anchor><div class="rms-guest-checks" data-guest-checks hidden><div class="rms-split-toolbar"><div><span>${__("Split by")}</span><div class="rms-split-mode-switch" role="group" aria-label="${__("Split by")}"><button type="button" data-action="payment-split-mode" data-mode="items" aria-pressed="${this.paymentSplitMode === "items"}" ${activeOrderItemCount < 2 ? "disabled" : ""}>${__("By items")}</button><button type="button" data-action="payment-split-mode" data-mode="amount" aria-pressed="${this.paymentSplitMode === "amount"}">${__("Equally")}</button></div></div><div class="rms-split-actions"><button type="button" data-action="payment-guest-add">+ ${__("Add person")}</button><button type="button" data-action="payment-guest-remove">− ${__("Remove person")}</button></div></div><p class="rms-split-description" data-split-description>${__("Set each person's share of the bill.")}</p><div data-payment-guests>${guests}</div><div class="rms-item-assignments" data-item-assignments hidden></div><p class="rms-split-balance" data-split-balance data-valid="false" aria-live="polite"></p></div></div>`;
+		this.page.main.find('[data-screen="payment"]').html(`<header class="rms-workspace-head"><button class="rms-screen-back" data-action="payment-back">‹ ${__("Back to order")}</button><div><span class="rms-pos-eyebrow">${approvalOnly ? __("DISCOUNT APPROVAL") : __("CHECKOUT")}</span><h1>${approvalOnly ? __("Approve cashier discount") : __("Take Payment")}</h1><p>${this.escape(this.orderNumber(this.state.order_name))} · ${this.escape(guestPayment?.guest_name || this.state.order_type || "")}</p></div><strong class="rms-payment-total">${this.currency(total)}</strong></header><div class="rms-payment-layout"><section class="rms-payment-panel">${approvalOnly ? "" : `<div class="rms-payment-panel-head"><h2>${__("Payment methods")}</h2>${paymentItemsButton}</div><p>${__("Allocate the total across payment methods or guests.")}</p>`}${discountTools}<div class="rms-payment-deposit" data-payment-deposit ${this.paymentDepositUsed ? "" : "hidden"}>${__("Bill total")}: <b data-deposit-bill>${this.currency(invoiceTotal)}</b><span>${__("Reservation deposit applied")}: <b data-deposit-applied>${this.currency(this.paymentDepositUsed)}</b></span></div>${approvalOnly ? "" : `<div class="rms-payment-method-list">${methodFields}</div>${splitMarkup}<div class="rms-payment-shortcuts"><span>${__("Suggested payment amounts")}</span><div data-suggested-payment-amounts>${quick}</div></div><div class="rms-payment-sum">${__("Remaining")}: <b data-payment-remaining>${this.currency(total)}</b></div><div class="rms-payment-change" data-payment-change hidden>${__("Change")}: <b data-change-amount>${this.currency(0)}</b></div><div class="rms-payment-actions"><button class="rms-screen-secondary" data-action="payment-print-only">${__("Print only")}</button><button class="rms-screen-secondary" data-action="payment-pay-print">${__("Pay and print")}</button><button class="rms-screen-primary" data-action="payment-pay">${__("Pay only")}</button></div>`}</section>${approvalOnly ? "" : `<section class="rms-payment-panel rms-payment-keypad"><h2>${__("Keypad")}</h2><p>${__("Select an amount field, then enter the amount.")}</p><div>${keys}</div></section>`}</div><div data-discount-dialog-root></div><div data-split-dialog-root></div>`);
 		this.page.main.find('[data-screen="payment"]').append('<div data-payment-items-dialog-root></div>');
 		if (this.guestCheckState?.order_name !== this.state.order_name) this.paymentItemAssignments = {};
 		this.renderPaymentItemAssignments();
@@ -2351,6 +2461,8 @@ class RMSPointOfSale {
 		this.paymentResplitItemNames = itemNames;
 		this.paymentSourceTotal = Number(check.grand_total || 0);
 		this.paymentTotal = this.roundPosPayable(this.paymentSourceTotal);
+		this.paymentDepositUsed = Math.min(Number(this.state.reservation_deposit_balance || 0), this.paymentTotal);
+		this.paymentTotal = Number((this.paymentTotal - this.paymentDepositUsed).toFixed(2));
 		this.paymentSplitMode = "items";
 		this.paymentSplitSetupOpen = true;
 		this.guestSplitFinalized = false;
@@ -2802,6 +2914,7 @@ class RMSPointOfSale {
 	}
 
 	async printOpenOrderCheck() {
+		if (this.hasUnconfirmedItems()) return frappe.msgprint(__("Confirm or remove unconfirmed items before using order actions."));
 		if (this.paymentSubmitting) return;
 		const printWindow = window.open("about:blank", "_blank");
 		if (!printWindow) return frappe.msgprint(__("Your browser blocked the print window. Allow pop-ups for this POS, then try again."));
@@ -2811,7 +2924,6 @@ class RMSPointOfSale {
 		try {
 			const html = this.activeGuestPayment ? await this.call("get_guest_check_print_html", { order_name: this.state.order_name, guest_check_name: this.activeGuestPayment.guest_check_name }) : await this.call("get_open_order_check_print_html", { order_name: this.state.order_name });
 			printWindow.document.open(); printWindow.document.write(html); printWindow.document.close();
-			setTimeout(() => printWindow.print(), 400);
 		} catch (error) {
 			if (!printWindow.closed) printWindow.close();
 			this.showError(error);
@@ -3095,9 +3207,11 @@ class RMSPointOfSale {
 		this.paymentDiscount = this.paymentDiscountDraft || this.paymentDiscount;
 		this.paymentSourceTotal = Number(this.paymentDiscountPreview.grand_total || 0);
 		this.paymentTotal = this.roundPosPayable(this.paymentSourceTotal);
+		this.paymentDepositUsed = Math.min(Number(this.state.reservation_deposit_balance || 0), this.paymentTotal);
+		this.paymentTotal = Number((this.paymentTotal - this.paymentDepositUsed).toFixed(2));
 		this.updateSuggestedPaymentAmounts();
 		if (this.activeGuestPayment) {
-			this.activeGuestPayment.grand_total = this.paymentTotal;
+			this.activeGuestPayment.grand_total = this.roundPosPayable(this.paymentSourceTotal);
 			this.activeGuestPayment.source_total = this.paymentSourceTotal;
 			const activeCheck = this.guestCheckState?.guest_checks?.find((row) => row.name === this.activeGuestPayment.guest_check_name);
 			if (activeCheck) Object.assign(activeCheck, {
@@ -3111,6 +3225,9 @@ class RMSPointOfSale {
 		const appliedDiscountLabel = this.page.main[0].querySelector(".rms-payment-discount-launch [data-discount-preview]");
 		if (appliedDiscountLabel) appliedDiscountLabel.textContent = this.currency(this.paymentDiscountPreview.discount_amount);
 		this.page.main.find(".rms-payment-total").text(this.currency(this.paymentTotal));
+		this.page.main.find("[data-payment-deposit]").prop("hidden", !this.paymentDepositUsed);
+		this.page.main.find("[data-deposit-bill]").text(this.currency(this.roundPosPayable(this.paymentSourceTotal)));
+		this.page.main.find("[data-deposit-applied]").text(this.currency(this.paymentDepositUsed));
 		const split = this.page.main[0].querySelector("[data-split-check-toggle]")?.checked;
 		if (split) {
 			this.page.main[0].querySelectorAll("[data-guest-amount]").forEach((input) => { input.dataset.manual = ""; });
@@ -3149,6 +3266,7 @@ class RMSPointOfSale {
 	}
 
 	async submitPayment(print = false) {
+		if (this.hasUnconfirmedItems()) return frappe.msgprint(__("Confirm or remove unconfirmed items before using order actions."));
 		if (this.paymentSubmitting) return;
 		this.paymentSubmitting = true;
 		const orderActive = await this.ensureCurrentOrderActive();
@@ -3182,8 +3300,8 @@ class RMSPointOfSale {
 		let paymentRecorded = false;
 		try {
 			const result = activeGuestPayment
-				? await this.call("pay_guest_check", { order_name: this.state.order_name, guest_check_name: activeGuestPayment.guest_check_name, payments: JSON.stringify(payments), discount_type: this.paymentDiscount?.type || "Percentage", discount_value: this.paymentDiscount?.value || 0, discount_reason: this.paymentDiscount?.reason || "", discount_approval_code: this.paymentDiscountApprovalCode || null, discount_approval_approver: this.paymentDiscountApprovalApprover || null })
-				: await this.call("pay_order", { order_name: this.state.order_name, payments: JSON.stringify(payments), guest_breakdown: isSplit ? JSON.stringify(guestRows) : null, discount_type: this.paymentDiscount?.type || "Percentage", discount_value: this.paymentDiscount?.value || 0, discount_reason: this.paymentDiscount?.reason || "", discount_approval_code: this.paymentDiscountApprovalCode || null, discount_approval_approver: this.paymentDiscountApprovalApprover || null });
+				? await this.call("pay_guest_check", { order_name: this.state.order_name, guest_check_name: activeGuestPayment.guest_check_name, payments: JSON.stringify(payments), deposit_amount: this.paymentDepositUsed || 0, discount_type: this.paymentDiscount?.type || "Percentage", discount_value: this.paymentDiscount?.value || 0, discount_reason: this.paymentDiscount?.reason || "", discount_approval_code: this.paymentDiscountApprovalCode || null, discount_approval_approver: this.paymentDiscountApprovalApprover || null })
+				: await this.call("pay_order", { order_name: this.state.order_name, payments: JSON.stringify(payments), guest_breakdown: isSplit ? JSON.stringify(guestRows) : null, deposit_amount: this.paymentDepositUsed || 0, discount_type: this.paymentDiscount?.type || "Percentage", discount_value: this.paymentDiscount?.value || 0, discount_reason: this.paymentDiscount?.reason || "", discount_approval_code: this.paymentDiscountApprovalCode || null, discount_approval_approver: this.paymentDiscountApprovalApprover || null });
 			paymentRecorded = true;
 			if (activeGuestPayment) {
 				if (result.guest_checks?.length) this.guestCheckState = { order_name: this.state.order_name, guest_checks: result.guest_checks };
@@ -3262,16 +3380,59 @@ class RMSPointOfSale {
 		dialog.show();
 	}
 
-	async showTableMap() {
+	async showTableMap({ fromOrderType = false } = {}) {
 		if (!this.state.store) return frappe.msgprint(__("Select a Store to view table availability."));
+		if (this.openingTableView) return;
+		this.openingTableView = true;
 		try {
-			this.tableMapRows = await this.call("get_tables", { store: this.state.store });
-			this.page.main.find(".rms-pos-shell").prop("hidden", true);
-			this.page.main.find('[data-screen="tables"]').prop("hidden", false);
-			this.renderTableMap();
-			return;
-
+			await this.flushDraftSave();
+			await this.ensureTableFloor();
+			if (fromOrderType && !this.state.order_types.find(row => row.name === this.state.order_type)?.require_table) return;
+			this.openingTableView = false;
+			this.setContentView("tables");
+			await this.tableFloor.load();
 		} catch (error) { this.showError(error); }
+		finally { this.openingTableView = false; }
+	}
+
+	async ensureTableFloor() {
+		if (this.tableFloor) return;
+		await import("/assets/rms/js/table_management.js?v=floor-11");
+		const container = $('<div class="rms-pos-table-content" data-pos-table-content hidden></div>')
+			.appendTo(this.page.main.find(".rms-pos-shell"));
+		this.tableFloor = new window.RMSTableManagement(container[0], this);
+	}
+
+	setContentView(view) {
+		this.contentView = view === "tables" ? "tables" : "menu";
+		this.pendingContentView = null;
+		try {
+			if (this.contentView === "tables") sessionStorage.setItem(this.contentViewKey(), JSON.stringify({ store: this.state.store, view: "tables" }));
+			else sessionStorage.removeItem(this.contentViewKey());
+		} catch (_) { /* A register still works when browser storage is unavailable. */ }
+		this.updateContentView();
+	}
+
+	updateContentView() {
+		const floor = this.contentView === "tables", root = this.page.main;
+		root.find(".rms-pos-shell > .rms-pos-layout").prop("hidden", floor);
+		root.find("[data-pos-table-content]").prop("hidden", !floor);
+		root.find("[data-search]").val(floor ? this.tableFloor?.state.search || "" : this.state.search || "");
+		root.find('[data-action="scan"]').prop("disabled", floor || !this.state.store || !this.state.brand || !this.state.order_type);
+		root.find("[data-search]").prop("disabled", !this.state.store || (!floor && (!this.state.brand || !this.state.order_type)));
+		const node = root[0];
+		node?.classList.toggle("rms-pos-tables-view", floor);
+		node?.querySelector('[data-action="table-map"]')?.setAttribute("aria-pressed", String(floor));
+		const search = node?.querySelector("[data-search]");
+		const placeholder = floor ? __("Search tables or checks") : __("Search products or scan a barcode");
+		search?.setAttribute("placeholder", placeholder);
+		search?.setAttribute("aria-label", placeholder);
+		for (const button of node?.querySelectorAll("[data-catalog-mode]") || []) {
+			const active = !floor && button.dataset.catalogMode === this.state.catalog_mode;
+			button.classList.toggle("is-active", active);
+			button.setAttribute("aria-selected", String(active));
+		}
+		this.renderOrderTypePicker();
 	}
 
 	renderTableMap() {
@@ -3322,7 +3483,9 @@ class RMSPointOfSale {
 	async loadOrder(order, { deferMenu = false } = {}) {
 		this.cartTab = null; this.cartPendingCount = 0;
 		this.currentOrderScreen = "sale";
-		this.state.order_name = order.name; this.state.order_status = order.status; this.state.brand = order.restaurant_brand; this.state.order_type = order.order_type;
+		this.state.order_name = order.name; this.state.order_status = order.status;
+		this.state.reservation_deposit_balance = Number(order.reservation_deposit_balance || 0);
+		this.state.expected_departure = order.expected_departure || null; this.state.brand = order.restaurant_brand; this.state.order_type = order.order_type;
 		this.state.cross_session_edit = Boolean(order.cashier_session && order.cashier_session !== this.state.session?.name);
 		this.state.category = null; this.state.search = "";
 		this.state.customer = order.customer; this.state.dining_area = order.dining_area; this.state.dining_table = order.dining_table;
@@ -3355,14 +3518,16 @@ class RMSPointOfSale {
 		if (row?.order_item_name) return this.cancelConfirmedItems([row.order_item_name]);
 	}
 
-	async cancelConfirmedItems(initialSelection = []) {
-		const orderName = this.state.order_name, revision = this.saleRevision || 0;
-		if (!orderName || !await this.ensureCurrentOrderActive()) return;
+	async cancelConfirmedItems(initialSelection = [], { orderName: floorOrderName = null, onComplete = null } = {}) {
+		if (!floorOrderName && this.hasUnconfirmedItems()) return frappe.msgprint(__("Confirm or remove unconfirmed items before using order actions."));
+		const orderName = floorOrderName || this.state.order_name, revision = this.saleRevision || 0;
+		const stillRelevant = () => Boolean(floorOrderName) || (orderName === this.state.order_name && revision === (this.saleRevision || 0));
+		if (!orderName || (!floorOrderName && !await this.ensureCurrentOrderActive())) return;
 		try {
 			await this.flushDraftSave();
-			if (orderName !== this.state.order_name || revision !== (this.saleRevision || 0)) return;
+			if (!stillRelevant()) return;
 			const options = await this.call("get_order_item_cancellation_options", { order_name: orderName });
-			if (orderName !== this.state.order_name || revision !== (this.saleRevision || 0)) return;
+			if (!stillRelevant()) return;
 			if (!options.items.length) return frappe.msgprint(__("There are no confirmed quantities available to void."));
 			const selected = new Set(initialSelection);
 			let submitting = false;
@@ -3376,7 +3541,7 @@ class RMSPointOfSale {
 				{ fieldtype: "Data", fieldname: "action_reason", hidden: 1, default: defaultReason },
 			], primary_action_label: __("Void selected items"), primary_action: async () => {
 				if (submitting) return;
-				if (orderName !== this.state.order_name || revision !== (this.saleRevision || 0)) { dialog.hide(); return; }
+				if (!stillRelevant()) { dialog.hide(); return; }
 				const items = [];
 				let invalid = false;
 				dialog.$wrapper[0].querySelectorAll("[data-cancel-select]:checked").forEach(check => {
@@ -3406,7 +3571,7 @@ class RMSPointOfSale {
 						this.orderModified = result.modified; this.watchCurrentOrder(); this.renderCart();
 						if (result.status !== "Cancelled") await this.syncCurrentOrder(null, true);
 					}
-					dialog.hide(); frappe.show_alert({ message: __("Selected items voided"), indicator: "orange" });
+					dialog.hide(); await onComplete?.(result); frappe.show_alert({ message: __("Selected items voided"), indicator: "orange" });
 				} catch (error) { submitting = false; update(); this.showError(error); }
 			} });
 			dialog.$wrapper.addClass("rms-pos-batch-cancel-dialog");
@@ -3541,7 +3706,7 @@ class RMSPointOfSale {
 	}
 
 	async ensureReturnSalesStyles() {
-		const version = "pos-a-100";
+		const version = "pos-a-119";
 		const href = `/assets/rms/css/point_of_sale.css?v=${version}`;
 		let link = [...document.querySelectorAll('link[rel="stylesheet"]')].find((node) => node.href.includes("/assets/rms/css/point_of_sale.css"));
 		if (link?.href.includes(`v=${version}`)) return;
@@ -3892,10 +4057,14 @@ class RMSPointOfSale {
 		const toggle = picker.querySelector("[data-order-type-toggle]");
 		const list = picker.querySelector("[data-order-type-list]");
 		const selected = this.state.order_types.find(row => row.name === this.state.order_type);
-		const label = selected?.title || selected?.name || this.state.order_type || __("No order types available");
+		const floor = this.contentView === "tables";
+		const label = floor && !selected?.require_table ? __("Dine In") : selected?.title || selected?.name || this.state.order_type || __("No order types available");
 		picker.querySelector('[data-role="order-type-label"]').textContent = label;
 		toggle.setAttribute("aria-label", `${__("Order Type")}: ${label}`);
-		toggle.disabled = Boolean(this.state.bootstrap_loading || !this.state.store || !this.state.order_types.length);
+		toggle.disabled = Boolean(this.state.bootstrap_loading || !this.state.store || !this.state.order_types.length || this.state.cart.length || this.state.order_name);
+		const select = picker.querySelector('[data-select="order_type"]');
+		if (select) select.disabled = toggle.disabled;
+		picker.classList.toggle("is-table-service", floor);
 		const focused = document.activeElement?.dataset?.orderTypeOption;
 		list.innerHTML = this.state.order_types.map(row => `<button type="button" role="option" tabindex="-1" data-order-type-option="${this.escape(row.name)}" aria-selected="${row.name === this.state.order_type}"><span>${this.escape(row.title || row.name)}</span><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>`).join("");
 		if (toggle.disabled) this.setOrderTypePickerOpen(false);
@@ -3977,7 +4146,7 @@ class RMSPointOfSale {
 		const root = this.page.main;
 		root.find('[data-select="store"]').html(this.selectOptions("store", this.state.stores, this.state.store, this.state.store ? null : __("Select Store"))).prop("disabled", Boolean(this.state.session || this.state.bootstrap_loading));
 		root.find('[data-select="brand"]').html(this.selectOptions("brand", this.state.brands, this.state.brand, this.state.brands.length ? null : __("No brands available"))).prop("disabled", Boolean(this.state.bootstrap_loading || !this.state.store || !this.state.brands.length));
-		root.find('[data-select="order_type"]').html(this.selectOptions("order_type", this.state.order_types, this.state.order_type, this.state.order_types.length ? null : __("No order types available"))).prop("disabled", Boolean(this.state.bootstrap_loading || !this.state.store || !this.state.order_types.length));
+		root.find('[data-select="order_type"]').html(this.selectOptions("order_type", this.state.order_types, this.state.order_type, this.state.order_types.length ? null : __("No order types available"))).prop("disabled", Boolean(this.state.bootstrap_loading || !this.state.store || !this.state.order_types.length || this.state.cart.length || this.state.order_name));
 		this.renderOrderTypePicker();
 		const store = this.state.stores.find(row => row.name === this.state.store);
 		const brand = this.state.brands.find(row => row.name === this.state.brand);
@@ -4004,6 +4173,7 @@ class RMSPointOfSale {
 		root.find('[data-role="context"]').html(this.state.session ? `<span class="rms-pos-live is-on"></span><span>${__("Cashier session open")} · ${this.escape(this.state.session.business_date)}</span>` : `<span class="rms-pos-live"></span><span>${__("Cashier session closed")}</span>`);
 		root.find('[data-role="catalog-hint"]').text(this.state.session ? __("Find an item, add it to the order, then take payment.") : __("Browse the menu and prices. Open a cashier session when you are ready to sell."));
 		this.updateOrderTypeFields(); this.renderFields(); this.renderCategories(); this.renderProducts(); this.renderCart();
+		this.updateContentView();
 	}
 
 	updateOrderTypeFields() {
@@ -4018,6 +4188,14 @@ class RMSPointOfSale {
 		root.find('[data-select="dining_area"]').html(this.selectOptions("dining_area", this.state.areas || [], this.state.dining_area, __("Not applicable"))).prop("disabled", !this.state.session || !this.state.permissions.can_checkout || !(this.state.areas || []).length);
 		root.find('[data-select="dining_table"]').html(this.selectOptions("dining_table", this.state.tables || [], this.state.dining_table, __("Select Table"))).prop("disabled", !this.state.session || !this.state.permissions.can_checkout || !(this.state.tables || []).length);
 		root.find('[data-action="customer"]').text(this.state.customer || __("Walk-in Customer"));
+		const table = (this.state.tables || []).find(row => row.name === this.state.dining_table);
+		let tableTitle = table?.title || this.state.dining_table || __("Select Table");
+		const storeTitle = (this.state.stores || []).find(row => row.name === this.state.store)?.title || this.state.store;
+		for (const prefix of [storeTitle, String(storeTitle || "").split(/\s+[-–—|]\s+/).pop()].filter(Boolean)) {
+			if (tableTitle.startsWith(prefix) && /^\s*[-–—:|/]\s*\S/.test(tableTitle.slice(prefix.length))) { tableTitle = tableTitle.slice(prefix.length).replace(/^\s*[-–—:|/]\s*/, ""); break; }
+		}
+		root.find('[data-role="cart-table"]').text(tableTitle);
+		root.find('[data-role="visit-limit"]').prop("hidden",!this.state.expected_departure).text(this.state.expected_departure ? `${__("Expected departure")}: ${moment(this.state.expected_departure).format("h:mm A")}` : "");
 		root.find('[data-input="external_reference"]').val(this.state.external_reference || "");
 	}
 
@@ -4109,7 +4287,7 @@ class RMSPointOfSale {
 		const {selected, children, path, roots} = this.categoryLevel();
 		const root = this.page.main;
 		root.find("[data-catalog-mode]").each((_, button) => {
-			const active = button.dataset.catalogMode === this.state.catalog_mode;
+			const active = this.contentView !== "tables" && button.dataset.catalogMode === this.state.catalog_mode;
 			$(button).toggleClass("is-active", active).attr("aria-selected", String(active));
 		});
 		root.find(".rms-pos-toolbar").toggle(true);
@@ -4138,7 +4316,7 @@ class RMSPointOfSale {
 		const cards = showSections && children.length ? `${heading(__("Sections"))}<div class="rms-pos-category-grid">${children.map(row => `<button type="button" class="rms-pos-category-card" data-category="${this.escape(row.name)}" data-category-card><span class="rms-pos-category-image">${row.image ? `<img src="${this.escape(row.image)}" alt="" loading="lazy" decoding="async">` : '<span aria-hidden="true">▦</span>'}</span><b>${this.escape(row.title)}</b><span>${__("Open section")} ›</span></button>`).join("")}</div>` : "";
 		let products = "";
 		if (showProducts && rows.length) {
-			products = (cards ? heading(__("Products in this section")) : "") + rows.map((row) => `<button type="button" class="rms-pos-product" data-product="${this.escape(row.name)}" title="${this.escape(row.title)}" aria-label="${this.escape(row.title)}${row.price != null ? `, ${this.currency(row.price)}` : ""}" ${row.price == null && !row.has_options || !this.state.permissions.can_checkout ? "disabled" : ""}><span class="rms-pos-product-image">${row.image ? `<img src="${this.escape(row.image)}" alt="" loading="lazy" decoding="async">` : `<span aria-hidden="true">＋</span>`}</span><span class="rms-pos-product-category">${this.escape(row.category_title || "")}</span><b>${this.escape(row.title)}</b><span class="rms-pos-product-price${row.has_options ? " is-options" : ""}">${row.price == null ? row.has_options ? __("Choose option") : __("Price not set") : this.currency(row.price)}</span></button>`).join("");
+			products = (cards ? heading(__("Products in this section")) : "") + rows.map((row) => `<button type="button" class="rms-pos-product" data-product="${this.escape(row.name)}" title="${this.escape(row.title)}" aria-label="${this.escape(row.title)}${row.price != null ? `, ${this.currency(row.price)}` : ""}" ${row.price == null && !row.has_options || !this.state.permissions.can_checkout ? "disabled" : ""}><span class="rms-pos-product-image">${row.image ? `<img src="${this.escape(row.image)}" alt="" loading="lazy" decoding="async">` : `<span aria-hidden="true">＋</span>`}</span><b>${this.escape(row.title)}</b><span class="rms-pos-product-price${row.has_options ? " is-options" : ""}">${row.price == null ? row.has_options ? __("Choose option") : __("Price not set") : this.currency(row.price)}</span></button>`).join("");
 		} else if (showProducts && this.state.catalog_loading) {
 			products = `<div class="rms-pos-loading" role="status"><span class="rms-pos-loading-indicator" aria-hidden="true"></span><span>${__("Loading the menu…")}</span></div>`;
 		} else if (!cards) {
@@ -4161,15 +4339,65 @@ class RMSPointOfSale {
 		}
 	}
 
+
+	cartItemHTML(row, { index = 0, scope = "pos", editable = false, pending = false, quantity = 0, amount = 0, status = "" } = {}) {
+		const floor = scope === "floor", name = this.escape(row.order_item_name || row.local_id || index);
+		const modifiers = row.modifier_labels || row.modifiers || [];
+		const descriptionCount = Number(Boolean(row.option_parent)) + Number(Boolean(modifiers.length)) + Number(Boolean(row.notes)) + Number(Boolean(row.cancelled_qty));
+		const comment = !editable || floor ? "" : `<button type="button" class="rms-pos-line-comment" data-action="notes" data-index="${index}" title="${__(row.notes ? "Edit comment" : "Add comment")}" aria-label="${__(row.notes ? "Edit comment" : "Add comment")}">${this.commentIconHTML()}</button>`;
+		const remove = !editable ? "" : `<button type="button" ${floor ? `data-floor-remove="${name}"` : `data-action="remove" data-index="${index}"`} aria-label="${__("Remove")}">×</button>`;
+		const step = row.must_be_whole_number ? 1 : .1;
+		const qty = editable ? `<div class="rms-pos-qty" dir="ltr"><button type="button" ${floor ? `data-floor-qty-step="-1" data-item="${name}"` : `data-action="quantity" data-index="${index}" data-delta="-1"`} aria-label="${__("Decrease quantity")}">−</button><input type="number" ${floor ? `data-floor-quantity="${name}"` : `data-quantity="${index}"`} min="${floor ? 0 : .001}" step="${row.must_be_whole_number ? 1 : floor ? step : "any"}" value="${quantity}" aria-label="${__("Ordered quantity")}"><button type="button" ${floor ? `data-floor-qty-step="1" data-item="${name}"` : `data-action="quantity" data-index="${index}" data-delta="1"`} aria-label="${__("Increase quantity")}">+</button></div>`
+			: `<span class="rms-pos-fixed-qty" dir="ltr" aria-label="${__("Quantity")}: ${quantity}"><span aria-hidden="true">×</span><b>${quantity}</b></span>`;
+		return `<article class="rms-pos-cart-line ${pending ? "is-unconfirmed" : "is-sent"} ${quantity === 0 ? "is-cancelled" : ""}" style="--rms-line-controls-row:${descriptionCount + 2}" aria-label="${this.escape(status || (pending ? __("Not confirmed") : __("Confirmed")))}" ${floor ? `data-floor-cart-item="${name}"` : `data-cart-confirmation="${pending ? "pending" : "confirmed"}" data-cart-item="${name}"`}>
+			<div class="rms-pos-line-main"><b>${this.escape(row.title)}</b><span class="rms-pos-line-flags">${comment}${remove}</span></div>
+			${row.option_parent ? `<small>${__("Option of")} ${this.escape(row.option_parent)}</small>` : ""}
+			${modifiers.length ? `<small class="rms-pos-line-modifiers">${modifiers.map(modifier => this.escape(modifier.title || modifier.modifier_product)).join(" · ")}</small>` : ""}
+			${row.notes ? `<small class="rms-pos-line-note">${this.escape(row.notes)}</small>` : ""}
+			${row.cancelled_qty ? `<small class="rms-pos-cancel-note">${__("Cancelled")}: ${this.escape(row.cancelled_qty)}</small>` : ""}
+			<div class="rms-pos-line-bottom">${qty}<strong><bdi>${this.currency(amount)}</bdi></strong></div></article>`;
+	}
+
+	cartTotalsHTML(totals = null, { roles = true, payableTotal = null } = {}) {
+		const payable = payableTotal == null ? Number(totals?.grand_total || 0) : Number(payableTotal);
+		return `<div class="rms-pos-total"><span>${__("Total")}</span><strong${roles ? ' data-role="total"' : ""}><bdi>${totals ? this.currency(payable) : "—"}</bdi></strong></div>`;
+	}
+
+	commentIconHTML() {
+		return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a7 7 0 0 1-7 7H7l-4 3V7a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4z"/><path d="M7 8h9M7 12h6"/></svg>';
+	}
+
+	async closeEmptyTable() {
+		if (!this.canCloseEmptyTable() || this.closingEmptyTable) return;
+		this.closingEmptyTable = true;
+		try {
+			await this.flushDraftSave();
+			if (!this.canCloseEmptyTable()) return;
+			await this.call("rms.api.table_service.close_empty_table", { order_name: this.state.order_name });
+			this.resetSale(); await this.showTableMap();
+		} catch (error) { this.showError(error); }
+		finally { this.closingEmptyTable = false; }
+	}
+
+	canCloseEmptyTable() {
+		return Boolean(this.state.order_name && this.state.dining_table && this.state.session?.status === "Open"
+			&& this.state.permissions.can_checkout && !this.state.cross_session_edit
+			&& ["Open", "Pending Confirmation"].includes(this.state.order_status) && !this.state.cart.length);
+	}
+
 	renderCart() {
 		const root = this.page.main;
+		this.renderOrderTypePicker();
 		const orderClosed = ["Paid", "Cancelled"].includes(this.state.order_status);
 		root.find('[data-action="order-notes"]').prop("disabled", orderClosed || !this.state.permissions.can_checkout)
-			.text(this.state.order_notes ? __("Edit order comment") : __("Order comment"));
+			.prop("title",this.state.order_notes ? __("Edit order comment") : __("Order comment"))
+			.html(`${this.commentIconHTML()}${this.state.order_notes ? '<i class="rms-pos-note-dot" aria-hidden="true"></i>' : ""}<span class="sr-only">${this.state.order_notes ? __("Edit order comment") : __("Order comment")}</span>`);
+		root.find('[data-role="order-comment-wrap"]').prop("hidden", !this.state.order_notes);
 		root.find('[data-role="order-notes"]').text(this.state.order_notes || "").prop("hidden", !this.state.order_notes);
 		const confirmed = ["Confirmed", "In Preparation", "Ready"].includes(this.state.order_status);
-				const cancellable = this.state.cart.filter(row => row.sent_to_kitchen && Number(row.qty) > Number(row.cancelled_qty || 0));
-		const canCancel = !orderClosed && confirmed && cancellable.length && Boolean(this.state.session)
+		const unconfirmedItems = this.hasUnconfirmedItems();
+		const cancellable = this.state.cart.filter(row => row.sent_to_kitchen && Number(row.qty) > Number(row.cancelled_qty || 0));
+		const canCancel = !unconfirmedItems && !orderClosed && confirmed && cancellable.length && Boolean(this.state.session)
 			&& !this.guestCheckState?.guest_checks?.length && (!this.state.cross_session_edit || this.state.permissions.can_edit_open_orders);
 		const groups = { pending: [], confirmed: [], cancelled: [] };
 		this.state.cart.forEach((row, index) => {
@@ -4180,15 +4408,8 @@ class RMSPointOfSale {
 			const pending = !orderClosed && !sent;
 			const status = orderClosed ? __(this.state.order_status) : sent ? (remainingQty ? __("Confirmed") : __("Voided")) : __("Not confirmed");
 			const modifiers = row.modifier_labels || [];
-			const comment = locked ? "" : `<button type="button" class="rms-pos-line-comment" data-action="notes" data-index="${index}" title="${__(row.notes ? "Edit comment" : "Add comment")}" aria-label="${__(row.notes ? "Edit comment" : "Add comment")}"><span aria-hidden="true">✎</span></button>`;
-			const quantity = locked ? `<span class="rms-pos-fixed-qty" aria-label="${__("Quantity")}"><b>${remainingQty}</b></span>` : `<div class="rms-pos-qty"><button type="button" data-action="quantity" data-index="${index}" data-delta="-1" aria-label="${__("Decrease quantity")}">−</button><input type="number" data-quantity="${index}" min="0.001" step="${row.must_be_whole_number ? "1" : "any"}" value="${row.qty}" aria-label="${__("Ordered quantity")}"><button type="button" data-action="quantity" data-index="${index}" data-delta="1" aria-label="${__("Increase quantity")}">+</button></div>`;
-			const card = `<article class="rms-pos-cart-line ${pending ? "is-unconfirmed" : "is-sent"} ${remainingQty === 0 ? "is-cancelled" : ""}" aria-label="${status}" data-cart-confirmation="${pending ? "pending" : "confirmed"}" data-cart-item="${this.escape(row.order_item_name || row.local_id || index)}">
-				<div class="rms-pos-line-main"><b>${this.escape(row.title)}</b><span class="rms-pos-line-flags">${comment}${locked ? "" : `<button type="button" data-action="remove" data-index="${index}" aria-label="${__("Remove")}">×</button>`}</span></div>
-				${row.option_parent ? `<small>${__("Option of")} ${this.escape(row.option_parent)}</small>` : ""}
-				${modifiers.map(modifier => `<small>+ ${this.escape(modifier.title)}${modifier.price ? ` · ${this.currency(modifier.price)}` : ""}</small>`).join("")}
-				${row.notes ? `<small class="rms-pos-line-note">${this.escape(row.notes)}</small>` : ""}
-				${row.cancelled_qty ? `<small class="rms-pos-cancel-note">${__("Cancelled")}: ${this.escape(row.cancelled_qty)}</small>` : ""}
-				<div class="rms-pos-line-bottom">${quantity}<strong>${this.currency(remainingQty * (Number(row.price) + modifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0)))}</strong></div></article>`;
+			const card = this.cartItemHTML(row, { index, editable: !locked, pending, quantity: remainingQty,
+				amount: remainingQty * (Number(row.price) + modifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0)), status });
 			groups[remainingQty === 0 ? "cancelled" : pending ? "pending" : "confirmed"].push(card);
 		});
 		const section = (key, title) => !groups[key].length ? "" : key === "cancelled"
@@ -4200,7 +4421,7 @@ class RMSPointOfSale {
 		root.find('[data-role="cart-tabs"]').html([ ["pending", __("Not confirmed"), groups.pending.length], ["confirmed", __("Confirmed"), groups.confirmed.length] ]
 			.map(([key, title, count]) => `<button type="button" role="tab" id="rms-cart-tab-${key}" aria-controls="rms-cart-panel-${key}" aria-selected="${this.cartTab === key}" data-action="cart-tab" data-tab="${key}">${title}<span>${count}</span></button>`).join(""))
 			.prop("hidden", !this.state.cart.length);
-		root.find('[data-role="cart-actions"]').html(`<span>${__("Manage confirmed items")}</span><button type="button" data-action="cancel-confirmed-items">${__("Void")}</button>`).prop("hidden", !canCancel || this.cartTab !== "confirmed");
+		root.find('[data-action="cancel-confirmed-items"]').prop("hidden", !canCancel || this.cartTab !== "confirmed");
 		const empty = text => `<p class="rms-cart-tab-empty">${text}</p>`;
 		const panel = (key, content) => `<div role="tabpanel" id="rms-cart-panel-${key}" aria-labelledby="rms-cart-tab-${key}" data-cart-panel="${key}"${this.cartTab === key ? "" : " hidden"}>${content}</div>`;
 		const html = this.state.cart.length ? panel("pending", section("pending", __("Not confirmed")) || empty(__("No unconfirmed items")))
@@ -4209,7 +4430,8 @@ class RMSPointOfSale {
 		root.find('[data-role="cart"]').html(html);
 		root.find('[data-role="cart-title"]').text(this.orderNumber(this.state.order_name) || __("New sale"));
 		root.find('[data-action="new-sale"]').prop("hidden", !this.state.order_name);
-		root.find('[data-role="ticket"]').text(orderClosed ? __(this.state.order_status) : confirmed ? __("In progress") : __("Draft"));
+		root.find('[data-role="ticket"]').text(orderClosed ? __(this.state.order_status) : confirmed ? __("In progress") : __("Draft")).prop("hidden", !orderClosed);
+		root.find('[data-role="discount-row"]').prop("hidden", !this.state.totals?.discount_amount);
 		root.find('[data-role="subtotal"]').text(this.state.totals ? this.currency(this.state.totals.subtotal) : "—");
 		root.find('[data-role="discount"]').text(this.state.totals?.discount_amount ? `− ${this.currency(this.state.totals.discount_amount)}` : "—");
 		root.find('[data-role="taxes"]').text(this.state.totals ? this.currency(this.state.totals.tax_total) : "—");
@@ -4219,12 +4441,21 @@ class RMSPointOfSale {
 		root.find('[data-role="rounding-row"]').prop("hidden", !this.state.totals || !roundingAdjustment);
 		root.find('[data-role="rounding-adjustment"]').text(this.currency(roundingAdjustment));
 		root.find('[data-role="total"]').text(this.state.totals ? this.currency(payableTotal) : "—");
+		root.find('.rms-pos-total').prop("hidden", !this.state.cart.length);
 		const orderCancelled = this.state.order_status === "Cancelled";
-		const unconfirmedItems = this.state.cart.some((row) => !row.sent_to_kitchen);
+		if (unconfirmedItems && this.currentOrderScreen === "payment") {
+			root.find('[data-screen="payment"]').prop("hidden", true);
+			root.find(".rms-pos-shell").prop("hidden", false);
+			this.activeGuestPayment = null;
+			this.rememberCurrentScreen("sale");
+		}
 		const awaitingOwnerPayment = Boolean(this.state.cross_session_edit && confirmed && !unconfirmedItems);
 		const checkoutDisabled = Boolean(orderClosed || !this.state.cart.length || !this.state.session
 			|| !this.state.permissions.can_checkout || this.state.busy || awaitingOwnerPayment);
 		root.find('[data-action="discount"]').prop("hidden", true);
+		const closeEmpty = this.canCloseEmptyTable();
+		root.find('[data-action="close-empty-table"]').prop("hidden", !closeEmpty).prop("disabled", Boolean(this.closingEmptyTable));
+		root.find('[data-action="checkout"]').prop("hidden", closeEmpty);
 		root.find('[data-action="checkout"]').prop("disabled", checkoutDisabled)
 			.text(orderCancelled ? __("Order cancelled") : awaitingOwnerPayment ? __("Payment by order owner") : confirmed && !unconfirmedItems ? __("Take Payment") : this.state.busy ? __("Saving…") : __("Confirm"));
 	}

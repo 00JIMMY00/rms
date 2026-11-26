@@ -1,0 +1,135 @@
+{
+  "doctype": "DocType",
+  "name": "Table Reservation",
+  "module": "RMS",
+  "engine": "InnoDB",
+  "autoname": "RMS-RES-.YYYY.-.#####",
+  "title_field": "guest_name",
+  "search_fields": "guest_name,phone,dining_table",
+  "sort_field": "starts_at",
+  "sort_order": "ASC",
+  "track_changes": 1,
+  "fields": [
+    {
+      "fieldname": "details",
+      "fieldtype": "Section Break",
+      "label": "Reservation"
+    },
+    {
+      "fieldname": "store",
+      "fieldtype": "Link",
+      "label": "Store",
+      "options": "Store",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "dining_table",
+      "fieldtype": "Link",
+      "label": "Dining Table",
+      "options": "Dining Table",
+      "reqd": 1,
+      "in_list_view": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "guest_name",
+      "fieldtype": "Data",
+      "label": "Guest name",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "phone",
+      "fieldtype": "Data",
+      "label": "Phone",
+      "reqd": 1
+    },
+    {
+      "fieldname": "guests",
+      "fieldtype": "Int",
+      "label": "Guests",
+      "reqd": 1,
+      "default": "2"
+    },
+    {
+      "fieldname": "times",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "starts_at",
+      "fieldtype": "Datetime",
+      "label": "Reservation time",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "ends_at",
+      "fieldtype": "Datetime",
+      "label": "End time",
+      "reqd": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Reserved\nSeated\nCompleted\nCancelled\nNo Show",
+      "default": "Reserved",
+      "reqd": 1,
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "pos_order",
+      "fieldtype": "Link",
+      "label": "POS Order",
+      "options": "POS Order",
+      "read_only": 1
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "field_order": [
+    "details",
+    "store",
+    "dining_table",
+    "guest_name",
+    "phone",
+    "guests",
+    "times",
+    "starts_at",
+    "ends_at",
+    "status",
+    "pos_order",
+    "notes"
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "report": 1,
+      "print": 1
+    },
+    {
+      "role": "POS Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "report": 1,
+      "print": 1
+    },
+    {
+      "role": "POS Cashier",
+      "read": 1,
+      "write": 0,
+      "create": 0,
+      "report": 1,
+      "print": 1
+    }
+  ]
+}

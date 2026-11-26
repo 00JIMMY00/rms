@@ -12,6 +12,12 @@ from rms.rms.doctype.kitchen_ticket.kitchen_ticket import KitchenTicket
 
 
 class TestPOSOrderOperations(unittest.TestCase):
+	def setUp(self):
+		# These operation unit tests use synthetic orders with no bookings.
+		deposits = patch("rms.reservation_payments.order_deposits", return_value=[])
+		deposits.start()
+		self.addCleanup(deposits.stop)
+
 	def test_guest_check_payable_uses_brand_rounding_and_saved_invoice_amount(self):
 		open_check = SimpleNamespace(name="CHECK-OPEN", guest_name="Guest 2", status="Open", grand_total=80.49,
 			discount_type="Percentage", discount_value=0, discount_amount=0, discount_scope="Net Total",
@@ -443,7 +449,7 @@ class TestPOSOrderOperations(unittest.TestCase):
 
 	def test_resplitting_persists_only_the_selected_open_check(self):
 		def item(name, price):
-			return frappe._dict(name=name, qty=1, cancelled_qty=0, selling_price=price, modifiers="[]")
+			return frappe._dict(name=name, qty=1, cancelled_qty=0, selling_price=price, modifiers="[]", sent_to_kitchen=1)
 		paid = frappe._dict(name="PAID-CHECK", guest_name="Guest 1", status="Paid", grand_total=25,
 			items_json='[{"name":"PAID-LINE","qty":1}]', pos_invoice="INV-1", payments_json='[]')
 		target = frappe._dict(name="TARGET-CHECK", guest_name="Guest 2", status="Open", grand_total=70,
@@ -606,7 +612,7 @@ class TestPOSOrderOperations(unittest.TestCase):
 	def test_payment_uses_the_active_sessions_stale_opening_entry_validator(self):
 		order = SimpleNamespace(name="ORDER-1", store="STORE-1", restaurant_brand="BRAND-1", cashier_session="SESSION-1", status="Confirmed",
 			pos_invoice=None, customer="CUSTOMER-1", subtotal=81.49, grand_total=80.49, items=[frappe._dict(name="LINE-1", item="ITEM-1",
-				qty=1, cancelled_qty=0, uom="Nos", selling_price=80.49, warehouse=None,
+				qty=1, cancelled_qty=0, uom="Nos", selling_price=80.49, warehouse=None, sent_to_kitchen=1,
 				modifiers=frappe.as_json([{"modifier_product": "MODIFIER-1", "qty": 1, "selling_price": 1, "warehouse": None}]))], payments=[],
 			discount_scope="Net Total", discount_amount=0, discount_type="Percentage", discount_value=0,
 			sales_taxes_and_charges_template=None, order_type="Dine In", save=unittest.mock.Mock(),
@@ -843,7 +849,7 @@ class TestPOSOrderOperations(unittest.TestCase):
 			frappe._dict(name="TABLE-1", title="Patio 01", dining_area="AREA-1", capacity=2, sequence_id=1),
 			frappe._dict(name="TABLE-2", title="Patio 02", dining_area="AREA-1", capacity=4, sequence_id=2),
 		]
-		orders = [frappe._dict(name="ORDER-1", dining_table="TABLE-2", status="Confirmed", cashier_session="SESSION-1", restaurant_brand="BRAND-1", order_type="Dine In", grand_total=115, modified="2026-10-19 12:00:00")]
+		orders = [frappe._dict(name="ORDER-1", dining_table="TABLE-2", status="Confirmed", cashier_session="SESSION-1", restaurant_brand="BRAND-1", order_type="Dine In", grand_total=115, creation="2026-10-19 11:00:00", modified="2026-10-19 12:00:00")]
 		sessions = [frappe._dict(name="SESSION-1", user="cashier@example.com")]
 		users = [frappe._dict(name="cashier@example.com", full_name="Cashier One")]
 		areas = [frappe._dict(name="AREA-1", title="Garden Patio")]
@@ -855,7 +861,7 @@ class TestPOSOrderOperations(unittest.TestCase):
 		self.assertTrue(result[1].occupied)
 		self.assertEqual(result[1].open_order, {
 			"order": "ORDER-1", "status": "Confirmed", "cashier_session": "SESSION-1", "cashier": "Cashier One",
-			"check_label": None, "order_type": "Dine In", "grand_total": 115, "modified": "2026-10-19 12:00:00",
+			"check_label": None, "order_type": "Dine In", "grand_total": 115, "creation": "2026-10-19 11:00:00", "modified": "2026-10-19 12:00:00",
 		})
 
 	def test_store_open_orders_can_be_viewed_without_an_active_cashier_session(self):
@@ -879,7 +885,8 @@ class TestPOSOrderOperations(unittest.TestCase):
 			restaurant_brand="BRAND-1", order_type="Dine In", customer="Walk-in", dining_area="AREA-1",
 			dining_table="TABLE-1", subtotal=100, discount_amount=0, discount_type="Percentage",
 			discount_scope="Net Total", tax_total=15, grand_total=115,
-			items=[frappe._dict(selling_product="PRODUCT-1", qty=1, uom="Nos", selling_price=100, amount=100, modifiers="[]")])
+			creation="2026-10-19 11:00:00", order_notes="Serve together",
+			items=[frappe._dict(selling_product="PRODUCT-1", qty=1, uom="Nos", selling_price=100, amount=100, modifiers="[]", notes="No onions")])
 		with patch("rms.api.pos.require_pos_action"), patch("rms.api.pos.assert_store_access"), patch("rms.api.pos.require_order_scope"), \
 				patch("rms.api.pos.frappe.get_doc", return_value=order), \
 				patch("rms.api.pos.frappe.db.get_value", side_effect=["other.cashier@example.com", "Classic Koshari"]):
@@ -887,6 +894,9 @@ class TestPOSOrderOperations(unittest.TestCase):
 		self.assertEqual(result["cashier"], "other.cashier@example.com")
 		self.assertEqual(result["items"][0]["title"], "Classic Koshari")
 		self.assertEqual(result["grand_total"], 115)
+		self.assertEqual(result["creation"], "2026-10-19 11:00:00")
+		self.assertEqual(result["order_notes"], "Serve together")
+		self.assertEqual(result["items"][0]["notes"], "No onions")
 
 	def test_disabled_pos_user_cannot_fall_back_to_legacy_access(self):
 		with patch("rms.api.pos.frappe.db.get_value", return_value=None), \
@@ -1195,8 +1205,8 @@ class TestPOSOrderOperations(unittest.TestCase):
 
 	def test_split_must_leave_a_positive_line_on_the_source_order(self):
 		source = SimpleNamespace(name="ORDER-1", items=[
-			frappe._dict(name="ROW-1", qty=2, uom="Nos"),
-			frappe._dict(name="ROW-2", qty=1, uom="Nos"),
+			frappe._dict(name="ROW-1", qty=2, uom="Nos", sent_to_kitchen=1),
+			frappe._dict(name="ROW-2", qty=1, uom="Nos", sent_to_kitchen=1),
 		], order_type="Takeaway")
 		with patch("rms.api.pos.get_owned_draft_order", return_value=source), \
 				patch("frappe.db.get_value", return_value=0):
@@ -1213,7 +1223,7 @@ class TestPOSOrderOperations(unittest.TestCase):
 		source.customer = "CUSTOMER-1"
 		source.dining_table = "TABLE-1"
 		source.items = [frappe._dict(name="ROW-1", selling_product="PRODUCT-1", option_parent=None, qty=2,
-			uom="Nos", notes=None, modifiers="[]")]
+			uom="Nos", notes=None, modifiers="[]", sent_to_kitchen=1)]
 		source.save = unittest.mock.Mock()
 		source.add_comment = unittest.mock.Mock()
 		source.set = unittest.mock.Mock()

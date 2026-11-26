@@ -24,6 +24,11 @@
     "dining_area",
     "dining_table",
     "check_label",
+    "guest_count",
+    "expected_departure",
+    "table_reservation",
+    "bill_requested_at",
+    "merged_into",
     "business_date",
     "order_notes",
     "items_section",
@@ -149,7 +154,8 @@
       "options": "Dining Table",
       "read_only": 1,
       "description": "Select or transfer tables from the POS Tables screen.",
-      "link_filters": "[[\"Dining Table\",\"store\",\"=\",\"eval:doc.store\"],[\"Dining Table\",\"dining_area\",\"=\",\"eval:doc.dining_area\"],[\"Dining Table\",\"enabled\",\"=\",\"1\"]]"
+      "link_filters": "[[\"Dining Table\",\"store\",\"=\",\"eval:doc.store\"],[\"Dining Table\",\"dining_area\",\"=\",\"eval:doc.dining_area\"],[\"Dining Table\",\"enabled\",\"=\",\"1\"]]",
+      "search_index": 1
     },
     {
       "fieldname": "check_label",
@@ -186,7 +192,7 @@
       "fieldtype": "Table",
       "label": "Items",
       "options": "POS Order Item",
-      "reqd": 1,
+      "reqd": 0,
       "read_only": 1,
       "description": "Review items here. Add, edit, or confirm them through the cashier POS."
     },
@@ -346,6 +352,42 @@
       "fieldtype": "Data",
       "label": "Table Check Group",
       "hidden": 1,
+      "read_only": 1,
+      "no_copy": 1
+    },
+    {
+      "fieldname": "guest_count",
+      "fieldtype": "Int",
+      "label": "Guests",
+      "read_only": 1,
+      "non_negative": 1
+    },
+    {
+      "fieldname": "table_reservation",
+      "fieldtype": "Link",
+      "label": "Table Reservation",
+      "options": "Table Reservation",
+      "read_only": 1
+    },
+    {
+      "fieldname": "bill_requested_at",
+      "fieldtype": "Datetime",
+      "label": "Bill requested at",
+      "read_only": 1,
+      "no_copy": 1
+    },
+    {
+      "fieldname": "merged_into",
+      "fieldtype": "Link",
+      "label": "Merged into order",
+      "options": "POS Order",
+      "read_only": 1,
+      "no_copy": 1
+    },
+    {
+      "fieldname": "expected_departure",
+      "fieldtype": "Datetime",
+      "label": "Expected departure",
       "read_only": 1,
       "no_copy": 1
     }

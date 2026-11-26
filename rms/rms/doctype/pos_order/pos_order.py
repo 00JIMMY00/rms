@@ -199,6 +199,11 @@ class POSOrder(Document):
 			return
 		self.normalize_check_label()
 		previous = self.get_doc_before_save()
+		if previous and self.get("bill_requested_at") and self.serialize_order_items(previous) != self.serialize_order_items(self):
+			self.bill_requested_at = None
+		from rms.table_service import validate_merge_snapshot
+		if validate_merge_snapshot(self):
+			return
 		if previous:
 			if self.flags.get("allow_guest_check_item_append"):
 				ensure_guest_check_item_append_only(previous, self)
@@ -296,6 +301,7 @@ class POSOrder(Document):
 			"dining_area",
 			"dining_table",
 			"check_label",
+			"expected_departure",
 			"discount_type",
 			"discount_scope",
 			"discount_value",
@@ -511,15 +517,10 @@ class POSOrder(Document):
 			self.validate_table_check_occupancy()
 
 	def validate_table_check_occupancy(self):
-		open_orders = frappe.get_all(
-			"POS Order",
-			filters={
-				"dining_table": self.dining_table,
-				"name": ["!=", self.name or ""],
-				"status": ["not in", ["Paid", "Cancelled"]],
-			},
-			fields=["name", "table_check_group", "check_label"],
-		)
+		from rms.table_service import lock_tables, assert_reservation_available, active_table_orders
+		lock_tables([self.dining_table])
+		assert_reservation_available(self.dining_table, self.get("table_reservation"), self.name if not self.is_new() else None, expected_departure=self.get("expected_departure"))
+		open_orders = active_table_orders(self.dining_table, self.name)
 		for order in open_orders:
 			if not self.table_check_group or order.table_check_group != self.table_check_group:
 				frappe.throw(_("This Dining Table already has an open order. Use Split into checks to add another bill for the same table."))
@@ -536,7 +537,7 @@ class POSOrder(Document):
 			frappe.throw(_("Check label cannot exceed 60 characters."))
 
 	def resolve_items(self, rows=None):
-		if self.status in ("Confirmed", "In Preparation", "Ready") and not self.items:
+		if not self.items and (self.status in ("Confirmed", "In Preparation", "Ready") or not self.dining_table):
 			frappe.throw(_("Add at least one product before confirming an order."))
 
 		allowed_payment_methods = set(
@@ -668,8 +669,12 @@ class POSOrder(Document):
 			row.amount = calculate_order_item_amount(row.qty, row.selling_price, modifier_rows)
 			subtotal += row.amount
 
+		from rms.reservation_payments import DEPOSIT_METHOD, applied_to_order
+		deposit_total = sum(flt(p.amount) for p in self.payments if p.mode_of_payment == DEPOSIT_METHOD)
+		if deposit_total and (self.status != "Paid" or abs(deposit_total - applied_to_order(self.name)) > .01):
+			frappe.throw(_("Reservation deposit payments must match the recorded deposit applications."))
 		for payment in self.payments:
-			if payment.mode_of_payment not in allowed_payment_methods:
+			if payment.mode_of_payment not in allowed_payment_methods and payment.mode_of_payment != DEPOSIT_METHOD:
 				frappe.throw(_("Payment Method {0} is not enabled on this POS Profile.").format(payment.mode_of_payment))
 
 		self.subtotal = subtotal

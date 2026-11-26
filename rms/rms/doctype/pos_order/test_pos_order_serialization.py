@@ -269,19 +269,19 @@ class TestPOSOrderEmbeddedDataSchema(unittest.TestCase):
 		self.assertEqual(parse_json_rows(row.recipe_snapshot)[0].item, "DRAFT-INGREDIENT")
 
 	def test_multiple_checks_share_a_table_only_when_they_share_the_server_group(self):
-		order = SimpleNamespace(name="ORDER-2", dining_table="TABLE-1", table_check_group="CHECK-GROUP-1", check_label="Guest 2")
-		with patch("frappe.get_all", return_value=[frappe._dict(name="ORDER-1", table_check_group="CHECK-GROUP-1", check_label="Guest 1")]):
+		order = frappe.get_doc(dict(doctype="POS Order", name="ORDER-2", dining_table="TABLE-1", table_check_group="CHECK-GROUP-1", check_label="Guest 2"))
+		with patch("rms.table_service.active_table_orders", return_value=[frappe._dict(name="ORDER-1", table_check_group="CHECK-GROUP-1", check_label="Guest 1")]):
 			POSOrder.validate_table_check_occupancy(order)
 
 	def test_same_table_checks_reject_duplicate_guest_labels_case_insensitively(self):
-		order = SimpleNamespace(name="ORDER-2", dining_table="TABLE-1", table_check_group="CHECK-GROUP-1", check_label="  guest 1 ")
-		with patch("frappe.get_all", return_value=[frappe._dict(name="ORDER-1", table_check_group="CHECK-GROUP-1", check_label="Guest 1")]):
+		order = frappe.get_doc(dict(doctype="POS Order", name="ORDER-2", dining_table="TABLE-1", table_check_group="CHECK-GROUP-1", check_label="  guest 1 "))
+		with patch("rms.table_service.active_table_orders", return_value=[frappe._dict(name="ORDER-1", table_check_group="CHECK-GROUP-1", check_label="Guest 1")]):
 			with self.assertRaisesRegex(frappe.ValidationError, "Check label is already used"):
 				POSOrder.validate_table_check_occupancy(order)
 
 	def test_unrelated_open_order_still_locks_the_table(self):
-		order = SimpleNamespace(name="ORDER-2", dining_table="TABLE-1", table_check_group="CHECK-GROUP-2")
-		with patch("frappe.get_all", return_value=[frappe._dict(name="ORDER-1", table_check_group="CHECK-GROUP-1")]):
+		order = frappe.get_doc(dict(doctype="POS Order", name="ORDER-2", dining_table="TABLE-1", table_check_group="CHECK-GROUP-2"))
+		with patch("rms.table_service.active_table_orders", return_value=[frappe._dict(name="ORDER-1", table_check_group="CHECK-GROUP-1")]):
 			with self.assertRaisesRegex(frappe.ValidationError, "Use Split into checks"):
 				POSOrder.validate_table_check_occupancy(order)
 

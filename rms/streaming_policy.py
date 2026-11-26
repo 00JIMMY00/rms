@@ -71,6 +71,8 @@ RMS_OPERATIONS = (
 	"POS Return",
 	"Shift Expense",
 	"Waste Entry",
+	"Table Reservation",
+	"Reservation Payment",
 )
 LOCAL_TYPES = (
 	"Approval Challenge",

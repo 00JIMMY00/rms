@@ -168,6 +168,9 @@ class CashierSession(Document):
 				paid_by_method.get(expense.mode_of_payment, 0) - (expense.amount or 0)
 			)
 
+		if frappe.db.exists("DocType", "Reservation Payment"):
+			for event in frappe.get_all("Reservation Payment", filters={"cashier_session": self.name, "kind": ["in", ["Receive", "Refund"]]}, fields=["kind", "mode_of_payment", "amount"]):
+				paid_by_method[event.mode_of_payment] = paid_by_method.get(event.mode_of_payment, 0) + (1 if event.kind == "Receive" else -1) * flt(event.amount)
 		for row in self.payments:
 			row.expected_amount = (row.opening_amount or 0) + paid_by_method.get(row.mode_of_payment, 0)
 			row.difference = (

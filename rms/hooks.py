@@ -32,13 +32,14 @@ add_to_apps_screen = [
 app_include_js = [
 	"/assets/rms/js/rms_reporting.js?v=analytics-4",
 	"/assets/rms/js/rms_management_workspace.js?v=studio-10",
-	"/assets/rms/js/rms_desk.js?v=desk-a-101",
+	"/assets/rms/js/rms_desk.js?v=desk-a-126",
 	"/assets/rms/js/rms_form_experience.js?v=forms-6",
 	"/assets/rms/js/approval_notifications.js?v=4",
 ]
 app_include_css = [
 	"/assets/rms/css/rms_desk.css?v=desk-a-16",
-	"/assets/rms/css/point_of_sale.css?v=pos-a-109",
+	"/assets/rms/css/point_of_sale.css?v=pos-a-119",
+	"/assets/rms/css/table_management.css?v=tables-21",
 	"/assets/rms/css/rms_management_studio.css?v=studio-16",
 	"/assets/rms/css/rms_form_experience.css?v=forms-5",
 	"/assets/rms/css/rms_reporting.css?v=analytics-4",
@@ -88,6 +89,7 @@ doc_events = {**rms_sync_doc_events, "POS Closing Entry": {
 }, "Sales Invoice": {
 	"before_validate": ["rms.pos_rounding.preserve_consolidated_pos_no_rounding", "rms.stock.prevent_duplicate_return_stock"],
 }}
+doc_events["POS Order"] = {**doc_events.get("POS Order", {}), "on_update": "rms.table_service.finish_reservation"}
 
 from rms.naming import TITLE_MASTERS as _rms_title_masters
 
@@ -153,6 +155,8 @@ doctype_js = {
 }
 
 permission_query_conditions = {
+	"Table Reservation": "rms.table_service.reservation_permission_query",
+	"Reservation Payment": "rms.reservation_payments.permission_query",
 	"POS Return": "rms.api.pos.get_pos_return_permission_query",
 	"Shift Expense": "rms.api.pos.get_shift_expense_permission_query",
 	"Approval Challenge": "rms.api.pos.get_approval_challenge_permission_query",
@@ -160,6 +164,8 @@ permission_query_conditions = {
 }
 
 has_permission = {
+	"Table Reservation": "rms.table_service.reservation_has_permission",
+	"Reservation Payment": "rms.table_service.reservation_has_permission",
 	"POS Return": "rms.api.pos.has_pos_return_permission",
 	"Shift Expense": "rms.api.pos.has_shift_expense_permission",
 	"Approval Challenge": "rms.api.pos.has_approval_challenge_permission",

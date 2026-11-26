@@ -14,6 +14,7 @@ class Element {
  show() { return this; }
  toggle() { return this; }
  trigger() { return this; }
+ empty() { this.content = ""; return this; }
  html(value) { this.content = value; return this; }
  map(callback) { return { get: () => this.values.map((value, index) => callback(index, { value })) }; }
 }
@@ -153,6 +154,26 @@ async function run() {
  pos.editCustomer = (dialog, customer) => { assert.equal(dialog, picker); editedCustomer = customer; };
  editButton.handlers.click();
  assert.equal(editedCustomer, 'CUSTOMER-1');
+ // A New Order picker owns its selection until the table order is confirmed.
+ pos.state.customer = 'EXISTING-TAKEAWAY-CUSTOMER';
+ let parentHidden = false;
+ const tableDialog = new Dialog({ fields: [{ fieldtype: 'HTML', fieldname: 'customer_picker', options: pos.customerPickerHTML() }] });
+ tableDialog.onhide = () => { parentHidden = true; };
+ tableDialog.show();
+ await pos.setupCustomerPicker(tableDialog, { customer: 'DEFAULT-CUSTOMER', allowWalkIn: true, autofocus: false });
+ const tablePicker = tableDialog.fields_dict.customer_picker.$wrapper;
+ tablePicker.find('.rms-customer-results').find('[data-customer-index]').handlers.click({ currentTarget: { dataset: { customerIndex: '0' } } });
+ assert.equal(tableDialog.selectedCustomer, 'CUSTOMER-1');
+ assert.equal(pos.state.customer, 'EXISTING-TAKEAWAY-CUSTOMER');
+ assert.doesNotMatch(pos.customerPickerHTML(), /href=|link-btn|btn-open/);
+ const tableInput = tablePicker.find('[data-customer-search]');
+ tableInput.val('Unknown customer'); tableInput.handlers.input();
+ assert.equal(tableDialog.selectedCustomer, null);
+ assert.equal(tableDialog.disabled, true, 'typed search text cannot become an unselected customer');
+ tableInput.val(''); tableInput.handlers.input();
+ assert.equal(tableDialog.disabled, false, 'a blank table customer can use the profile default');
+ tableDialog.hide();
+ assert.equal(parentHidden, true, 'picker cleanup must preserve the parent dialog lifecycle');
  console.log('PASS: all phone fields editable; saved addresses editable; phone/address defaults selectable; IDs retained; failed saves preserve edits.');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

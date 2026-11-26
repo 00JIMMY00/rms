@@ -68,7 +68,7 @@ def cancellations(ctx):
 	 JOIN `tabStore` s ON s.name=o.store JOIN `tabCompany` company ON company.name=s.company
 	 LEFT JOIN `tabSelling Product` p ON p.name=oi.selling_product
 	 LEFT JOIN `tabPrice List` pl ON pl.name=oi.price_list
-	 WHERE c.parenttype='POS Order' AND s.company=%(company)s AND o.store IN %(stores)s
+	 WHERE c.parenttype='POS Order' AND COALESCE(c.merged_from,'')='' AND s.company=%(company)s AND o.store IN %(stores)s
 	 AND c.cancelled_at >= %(start)s AND c.cancelled_at < %(end)s ORDER BY c.cancelled_at DESC""")
 	result = []
 	for r in rows:

@@ -89,6 +89,26 @@ def validate(doc):
 			same(journal.company, store.company)
 			same(journal.docstatus, 1)
 			money(journal.total_debit, doc.amount)
+	elif doc.doctype == "Reservation Payment":
+		from rms.reservation_payments import DEPOSIT_METHOD
+		number(doc.amount, positive=True)
+		booking = linked("Table Reservation", doc.reservation)
+		same(booking.store, doc.store)
+		require(doc.kind in ("Receive", "Refund", "Apply"), "Invalid reservation payment transaction.")
+		if doc.kind == "Apply":
+			invoice = linked("POS Invoice", doc.pos_invoice)
+			order = linked("POS Order", doc.pos_order)
+			same(invoice.company, store.company)
+			same(invoice.docstatus, 1)
+			same(order.store, doc.store)
+			same(doc.mode_of_payment, DEPOSIT_METHOD)
+			require(sum(flt(p.amount) for p in invoice.payments if p.mode_of_payment == DEPOSIT_METHOD) >= flt(doc.amount),
+				"The invoice does not include this reservation deposit.")
+		else:
+			journal = linked("Journal Entry", doc.journal_entry)
+			same(journal.company, store.company)
+			same(journal.docstatus, 1)
+			money(journal.total_debit, doc.amount)
 	elif doc.doctype == "POS Return":
 		validate_return(doc, store)
 	elif doc.doctype == "Waste Entry":

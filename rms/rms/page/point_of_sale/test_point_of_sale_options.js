@@ -71,7 +71,7 @@ async function run() {
 	assert.match(source, /this\.call\("save_guest_check_allocations"/, "persist guest assignments before printing or payment");
 	assert.match(source, /this\.call\("pay_guest_check"/, "submit only the selected guest check for payment");
 	assert.ok(source.includes('this.call("pay_guest_check", { order_name: this.state.order_name, guest_check_name: activeGuestPayment.guest_check_name'), "submit multiple payment methods for the selected guest on its own payment screen");
-	assert.match(source, /pay_guest_check", \{ order_name: this\.state\.order_name, guest_check_name: activeGuestPayment\.guest_check_name, payments: JSON\.stringify\(payments\), discount_type:/, "submit the selected discount with a guest check payment");
+	assert.match(source, /pay_guest_check", \{ order_name: this\.state\.order_name, guest_check_name: activeGuestPayment\.guest_check_name, payments: JSON\.stringify\(payments\), deposit_amount: this\.paymentDepositUsed \|\| 0, discount_type:/, "submit the selected discount with a guest check payment");
 	assert.match(source, /this\.paymentSourceTotal = Number\(this\.paymentDiscountPreview\.grand_total \|\| 0\);[\s\S]*?this\.paymentTotal = this\.roundPosPayable\(this\.paymentSourceTotal\)/, "round the selected guest check's discounted preview total");
 	assert.match(source, /guest_check_name: this\.activeGuestPayment\?\.guest_check_name \|\| null/, "preview discounts within the selected guest check");
 	assert.match(source, /activeGuestCheck\?\.discount_value/, "reopen the selected guest check with its own discount settings");

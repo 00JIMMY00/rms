@@ -1311,3 +1311,268 @@ Streaming connection,اتصال المزامنة
 No Slave is connected to this Store. Select this Store when connecting a Slave.,لا يوجد سليف مرتبط بهذا الفرع. اختر هذا الفرع عند ربط السليف.
 Store connection settings are managed automatically.,يتم إدارة إعدادات ربط الفرع تلقائيًا.
 Choose {0} when linking this connection.,اختر {0} عند ربط هذا الجهاز.
+Restaurant Management System,نظام إدارة المطاعم
+A clear view of every table and every check.,تابع كل طاولة وشيك من مكان واحد.
+Table details,تفاصيل الطاولة
+"Select a table to see its checks, order details and available actions.",اختر طاولة لعرض الشيكات وتفاصيل الطلب والإجراءات المتاحة.
+Table status refreshes every 30 seconds.,يتم تحديث حالة الطاولات كل ٣٠ ثانية.
+Try refreshing the tables.,حاول تحديث الطاولات مرة أخرى.
+{0} min,{0} د
+{0} h {1} min,{0} س {1} د
+{0} checks,{0} شيكات
+Order time,وقت الطلب
+Close details,إغلاق التفاصيل
+This table has an active order,يوجد طلب مفتوح على هذه الطاولة
+Order details are not available with your current permissions.,صلاحياتك الحالية لا تسمح بعرض تفاصيل الطلب.
+Start a new check when your guests are seated.,ابدأ شيكًا جديدًا عند جلوس الضيوف.
+Your POS profile does not allow creating orders.,ملف صلاحيات نقطة البيع لا يسمح بإنشاء طلبات.
+Current order,الطلب الحالي
+Loading order…,جارٍ تحميل الطلب…
+Could not load order details,تعذّر تحميل تفاصيل الطلب
+No items on this check yet.,لا توجد أصناف في هذا الشيك حتى الآن.
+Order notes,ملاحظات الطلب
+No notes on this check.,لا توجد ملاحظات على هذا الشيك.
+Continue order,استكمال الطلب
+Quick actions,إجراءات سريعة
+View details,عرض التفاصيل
+View mode · no cashier session,للعرض · لا توجد وردية كاشير مفتوحة
+Occupied,مشغولة
+Available,متاحة
+All areas,كل المناطق
+Allow pop-ups to print the check.,اسمح بالنوافذ المنبثقة لطباعة الشيك.
+Ask a manager to assign a Store to your POS User.,اطلب من المدير تعيين فرع لمستخدم نقطة البيع الخاص بك.
+Back to POS,نقطة البيع
+Cancel order,إلغاء الطلب
+Cancel this open order?,هل تريد إلغاء هذا الطلب المفتوح؟
+Capacity,السعة
+"Change the area, status or search term to see more tables.",غيّر المنطقة أو الحالة أو عبارة البحث لعرض طاولات أخرى.
+Checks merged,تم دمج الشيكات
+Confirm the order before printing or payment,أكد الطلب قبل الطباعة أو الدفع
+Continue this order from its cashier session,استكمل هذا الطلب من وردية الكاشير الخاصة به
+Could not load table status,تعذّر تحميل حالة الطاولات
+Create split check,إنشاء شيك منفصل
+Current guest / check,الضيف / الشيك الحالي
+Destination table,الطاولة الجديدة
+Guest 1,الضيف ١
+Guest 2,الضيف ٢
+Loading tables…,جارٍ تحميل الطاولات…
+Merge checks,دمج الشيكات
+Merge this check into,الشيك المراد دمجه
+Move order,نقل الطلب
+Move order to another table,نقل الطلب إلى طاولة أخرى
+Move table,نقل الطاولة
+New check created,تم إنشاء الشيك الجديد
+New guest / check,الضيف / الشيك الجديد
+No assigned Store,لم يتم تعيين فرع
+No other open check on this table can be merged.,لا يوجد شيك مفتوح آخر قابل للدمج على هذه الطاولة.
+No tables match these filters,لا توجد طاولات تطابق الفلاتر
+Open checks,الشيكات المفتوحة
+Open order,فتح الطلب
+Open your cashier session before creating a table order.,افتح وردية الكاشير أولًا لإنشاء طلب على الطاولة.
+Order cancelled,تم إلغاء الطلب
+Order details,تفاصيل الطلب
+Order moved,تم نقل الطلب
+Print check,طباعة الشيك
+Ready for the next guests,جاهزة لاستقبال الضيوف
+Search tables or checks,ابحث عن طاولة أو شيك
+Session open,الوردية مفتوحة
+Split check,تقسيم الشيك
+Split table check,تقسيم شيك الطاولة
+Start an order,بدء طلب
+Table check,شيك الطاولة
+Table management,إدارة الطاولات
+Table status,حالة الطاولة
+Tables,الطاولات
+Take payment,تحصيل الدفع
+The operation could not be completed.,تعذّر إتمام العملية.
+There are no available destination tables.,لا توجد طاولات متاحة لنقل الطلب.
+seats,مقاعد
+Busy,مشغولة
+Reserved,محجوزة
+Bill requested,مطلوب الحساب
+Reservations,الحجوزات
+Reservation,الحجز
+Reserve table,حجز طاولة
+Open table,فتح طاولة
+Seat guests,وصول الضيوف
+Guests,عدد الضيوف
+guests,أفراد
+Check name,اسم الشيك
+Open and add items,فتح وإضافة أصناف
+Add items,إضافة أصناف
+Confirm order,تأكيد الطلب
+Order confirmed and sent to preparation,تم تأكيد الطلب وإرساله للتحضير
+Close table,إغلاق الطاولة
+Close this empty table?,هل تريد إغلاق هذه الطاولة الفارغة؟
+Edit reservation,تعديل الحجز
+Reservation time,موعد الحجز
+End time,وقت الانتهاء
+Save reservation,حفظ الحجز
+Reservation saved,تم حفظ الحجز
+Loading reservations…,جارٍ تحميل الحجوزات…
+New reservation,حجز جديد
+No reservations for this date.,لا توجد حجوزات في هذا اليوم.
+Cancel reservation,إلغاء الحجز
+Cancel this reservation?,هل تريد إلغاء هذا الحجز؟
+Mark this reservation as No Show?,هل تريد تسجيل عدم حضور العميل؟
+No Show,لم يحضر
+Seated,تم الوصول
+Completed,مكتمل
+Choose the check to add here,اختر الشيك المراد إضافته إلى هذا الشيك
+No compatible open check is available to merge.,لا يوجد شيك مفتوح متوافق للدمج.
+Only an upcoming reservation can be changed.,يمكن تعديل الحجوزات التي لم يصل أصحابها فقط.
+This reservation status change is not allowed.,لا يمكن تغيير حالة الحجز بهذه الطريقة.
+A new reservation must start Reserved.,يجب أن يبدأ الحجز الجديد بحالة محجوزة.
+Choose a reservation that ends in the future.,اختر حجزًا ينتهي في وقت لاحق.
+This table already has a reservation during the selected time.,الطاولة محجوزة بالفعل خلال الفترة المختارة.
+This table is busy now. Choose a future reservation time.,الطاولة مشغولة حاليًا. اختر موعدًا لاحقًا للحجز.
+The reservation must be linked to its table order.,يجب ربط الحجز بطلب الطاولة الخاص به.
+Complete payment before completing the reservation.,أكمل الدفع أولًا لإنهاء الحجز.
+Close the table order before cancelling this reservation.,أغلق طلب الطاولة قبل إلغاء هذا الحجز.
+Cancel reservations instead of deleting their history.,ألغِ الحجز للاحتفاظ بسجله.
+Enter a guest name of up to 140 characters.,أدخل اسم العميل بحد أقصى ١٤٠ حرفًا.
+Enter a contact phone number of up to 40 characters.,أدخل رقم تليفون للتواصل بحد أقصى ٤٠ حرفًا.
+Guest count must fit the table capacity.,يجب أن يكون عدد الضيوف صحيحًا وألا يتجاوز سعة الطاولة.
+Reservation end time must be after its start time.,يجب أن ينتهي الحجز بعد موعد بدايته.
+Enter a note of up to 2000 characters.,أدخل ملاحظة بحد أقصى ٢٠٠٠ حرف.
+This table already has an active order.,يوجد طلب مفتوح بالفعل على هذه الطاولة.
+This table is reserved now. Seat its reservation or choose another table.,الطاولة محجوزة حاليًا. سجّل وصول أصحاب الحجز أو اختر طاولة أخرى.
+Combined check details changed during the merge.,تغيرت بيانات الشيك أثناء الدمج.
+Combined check item snapshots changed during the merge.,تغيرت بيانات الأصناف المحفوظة أثناء الدمج.
+Enter reservation details.,أدخل بيانات الحجز.
+Only an upcoming reservation can be cancelled or marked No Show.,يمكن إلغاء الحجز أو تسجيل عدم الحضور قبل وصول العميل فقط.
+The reservation changed. Refresh it before trying again.,تغيرت بيانات الحجز. حدّثه قبل المحاولة مرة أخرى.
+Open your Cashier Session before opening a table.,افتح وردية الكاشير قبل فتح طاولة.
+Choose an upcoming reservation for this table.,اختر حجزًا لم يصل أصحابه لهذه الطاولة.
+Seat a reservation during its time or up to 30 minutes before it starts.,يمكن تسجيل الوصول خلال فترة الحجز أو قبل بدايته بنصف ساعة.
+Choose an allowed Brand and a table Order Type.,اختر علامة تجارية ونوع طلب للطاولات متاحين لك.
+Refresh the order before printing its check.,حدّث الطلب قبل طباعة الحساب.
+Merge checks from your own open Cashier Session.,يمكنك دمج شيكات ورديتك المفتوحة فقط.
+Only active unpaid checks can be merged.,يمكن دمج الشيكات المفتوحة غير المسددة فقط.
+Checks with payments or allocated guest bills cannot be merged.,لا يمكن دمج شيك عليه دفعات أو تقسيمات محفوظة للضيوف.
+"Choose checks with the same Store, Brand, customer, Order Type and discount settings.",اختر شيكات بنفس الفرع والعلامة التجارية والعميل ونوع الطلب وإعدادات الخصم.
+Choose two table orders.,اختر طلبين مرتبطين بطاولات.
+Only an empty unpaid table can be closed here. Use payment or order cancellation for an existing check.,يمكن إغلاق الطاولة الفارغة فقط من هنا. استخدم الدفع أو إلغاء الطلب إذا كان بها أصناف.
+Mark No Show only after the reservation start time.,يمكن تسجيل عدم الحضور بعد موعد الحجز فقط.
+Choose a destination table that fits this party.,اختر طاولة جديدة تتسع لعدد الضيوف.
+Bill requested at,وقت طلب الحساب
+Table Reservation,حجز طاولة
+Merged into order,تم الدمج في طلب
+Rounding,تسوية التقريب
+Seat the reservation when your guests arrive.,سجّل وصول أصحاب الحجز عند حضورهم.
+NEW ORDER,طلب جديد
+New order,طلب جديد
+Confirm and open order,تأكيد وفتح الطلب
+Walk-in customer,عميل نقدي
+Search by name or phone. Leave empty for the default customer.,ابحث بالاسم أو الهاتف أو اتركه للعميل الافتراضي.
+"Enter a whole number of guests between 1 and {0}.",أدخل عدد ضيوف صحيحًا من 1 إلى {0}.
+Fewer guests,تقليل عدد الضيوف
+More guests,زيادة عدد الضيوف
+Dine In,داخل المطعم
+Confirm unconfirmed items,تأكيد الأصناف غير المؤكدة
+Confirm or remove unconfirmed items before using order actions.,أكّد الأصناف غير المؤكدة أو احذفها أولًا لإظهار إجراءات الطلب.
+Item confirmation,تأكيد الأصناف
+Split to table,فصل لطاولة
+Split to another table,فصل الطلب لطاولة أخرى
+Split to selected table,فصل إلى الطاولة المختارة
+From table,من طاولة
+To table,إلى طاولة
+Choose a table below,اختر طاولة من القائمة
+Available tables,الطاولات المتاحة
+Search tables,بحث عن طاولة
+Compatible checks,الطلبات المتوافقة
+Merge tables,دمج الطاولات
+Keep this table,الإبقاء على هذه الطاولة
+Add another check,إضافة طلب آخر
+Check to add,الطلب المراد إضافته
+Merge into one check,دمج في شيك واحد
+One combined check,شيك واحد مجمع
+Items to move,الأصناف المراد نقلها
+Guests moving,الضيوف المنتقلون
+Moving,سيتم نقل
+Items remaining,الأصناف المتبقية
+No matching tables,لا توجد طاولات مطابقة
+Move to selected table,نقل إلى الطاولة المختارة
+Choose quantities for the other table. The remaining items stay here.,اختر كميات الأصناف للطاولة الأخرى. ستبقى باقي الأصناف هنا.
+Both orders will become one check on this table.,سيتم جمع الطلبين في شيك واحد على هذه الطاولة.
+Select a table and the items to move.,اختر الطاولة والأصناف المراد نقلها.
+The whole order and its guests move together.,سيتم نقل الطلب بالكامل مع ضيوفه إلى الطاولة المختارة.
+Selected items moved to the other table,تم نقل الأصناف المختارة إلى الطاولة الأخرى
+Choose items and quantities to move to the other table.,اختر الأصناف وكمياتها لنقلها إلى الطاولة الأخرى.
+Use Void with a reason and authorization to cancel confirmed items.,لإلغاء أصناف مؤكدة، استخدم Void مع تحديد السبب والحصول على الموافقة المطلوبة.
+Confirmed items must be voided; only unconfirmed items can be removed or edited.,الأصناف المؤكدة تتطلب Void. يمكن حذف أو تعديل الأصناف غير المؤكدة فقط.
+This check cannot be edited from the dining floor.,لا يمكن تعديل هذا الطلب من شاشة الطاولات.
+The order changed. Refresh it before trying again.,تم تعديل الطلب. حدّثه قبل المحاولة مرة أخرى.
+Enter a valid quantity.,أدخل كمية صحيحة.
+Enter a whole quantity for this item.,أدخل كمية غير كسرية لهذا الصنف.
+Choose a different available destination table.,اختر طاولة أخرى متاحة للنقل.
+Checks with payments or allocated guest bills cannot be split between tables.,لا يمكن فصل طلب عليه مدفوعات أو فواتير ضيوف مؤكدة بين الطاولات.
+Each split quantity must fit the remaining confirmed quantity.,يجب ألا تتجاوز كمية الفصل الكمية المؤكدة المتبقية.
+Leave at least one item on the source table. Use Move table to move the whole order.,اترك صنفًا واحدًا على الأقل على الطاولة الحالية. لنقل الطلب بالكامل استخدم نقل الطاولة.
+Leave at least one guest on the source table.,اترك ضيفًا واحدًا على الأقل على الطاولة الحالية.
+This check has fixed charges that cannot be split between tables. Split its guest bills instead.,هذا الطلب عليه رسوم ثابتة لا يمكن توزيعها بين الطاولات. يمكنك تقسيم فواتير الضيوف داخل الطلب.
+All statuses,كل الحالات
+Table actions,إجراءات الطاولة
+Tomorrow,غدًا
+Open table before reservation,فتح الطاولة قبل موعد الحجز
+Arrival can be recorded 30 minutes before the reservation.,يمكن تسجيل الحضور قبل الحجز بنصف ساعة.
+"Seat this booking, or finish any earlier walk-in before its arrival time.",سجّل حضور الحجز، أو أنهِ أي طلب سابق قبل موعده.
+When & guests,الموعد والضيوف
+Table & booking,الطاولة والحجز
+Arrival time,موعد الحضور
+Other time,وقت آخر
+Reservation date,تاريخ الحجز
+Collect a deposit,تحصيل عربون
+Optional · deducted from the final bill,اختياري · يُخصم من الحساب النهائي
+Upcoming & seated,القادمة والحاضرة
+Awaiting arrival,في انتظار الحضور
+No deposit,بدون عربون
+Unused deposit,العربون المتبقي
+Reservation deposit applied,العربون المخصوم
+Bill total,إجمالي الحساب
+Choose a table,اختر طاولة
+Choose items,اختر الأصناف
+Confirm reservation,تأكيد الحجز
+Save changes,حفظ التعديلات
+No reservations here yet,لا توجد حجوزات
+Create a booking with or without a deposit.,أضف حجزًا بعربون أو من غير عربون.
+Too small,السعة غير كافية
+Reserved at this time,محجوزة في هذا الموعد
+Busy now,مشغولة حاليًا
+Refund deposit,رد العربون
+Refund reservation deposit,رد عربون الحجز
+Refund amount,المبلغ المراد رده
+Confirm refund,تأكيد رد المبلغ
+Refund to,طريقة رد المبلغ
+Refunded,تم رده
+Applied,تم خصمه
+Earlier times,أوقات سابقة
+Later times,أوقات لاحقة
+Finding available tables…,جارٍ البحث عن الطاولات المتاحة…
+1 hour,ساعة
+1½ hours,ساعة ونصف
+2 hours,ساعتان
+3 hours,٣ ساعات
+The unused deposit remains recorded until a manager explicitly refunds it.,يبقى العربون المتبقي مسجّلًا لحين ردّه بإجراء صريح من المدير.
+Early arrival,حضور مبكر
+Seat guests early,تسجيل الحضور المبكر
+Expected departure,موعد المغادرة المتوقع
+Stay time exceeded,تجاوز وقت القعدة
+Reserved at {0},محجوزة الساعة {0}
+Available for {0} minutes. Choose how long these guests will stay.,متاحة لمدة {0} دقيقة. اختر مدة قعدة الضيوف.
+Until {0},حتى {0}
+Need more time? Choose another table,محتاج وقت أطول؟ اختر طاولة تانية
+Choose another table,اختر طاولة أخرى
+Choose a stay that ends before the reservation.,اختر مدة قعدة تنتهي قبل الحجز.
+No unreserved table fits these guests. Use a shorter stay or wait for a table.,لا توجد طاولة غير محجوزة تستوعب الضيوف. اختر مدة أقصر أو انتظر طاولة مناسبة.
+Early arrivals can be seated if a suitable table is free. Any earlier walk-in must finish before this booking.,يمكن تسجيل الحضور المبكر لو فيه طاولة مناسبة فاضية. أي قعدة قبل الحجز لازم تنتهي قبل موعده.
+This reservation has ended. Review its time before seating guests.,انتهى موعد الحجز. راجع الميعاد قبل تسجيل الحضور.
+This reservation has ended. Edit its time before seating the guests.,انتهى موعد الحجز. عدّل الميعاد قبل تسجيل الحضور.
+This reservation is no longer available for arrival. Edit its time or choose another booking.,الحجز غير متاح لتسجيل الحضور. عدّل موعده أو اختر حجزًا آخر.
+Choose a departure time after now.,اختر موعد مغادرة بعد الوقت الحالي.
+This table has an upcoming reservation. Open it from Tables and choose a stay that ends before the booking.,الطاولة عليها حجز قادم. افتحها من شاشة الطاولات واختر مدة قعدة تنتهي قبل الحجز.
+This stay overlaps another reservation. Shorten the visit or choose another table.,مدة القعدة تتداخل مع حجز آخر. اختر مدة أقصر أو طاولة أخرى.
+This table has guests expected to stay into that time. Choose a later time or another table.,يوجد ضيوف متوقع استمرار قعدتهم في هذا الموعد. اختر وقتًا لاحقًا أو طاولة أخرى.
+Guests are staying at this time,فيه ضيوف في الموعد ده
+Currently busy; confirm it will be free before arrival.,مشغولة حاليًا؛ تأكد أنها هتفضى قبل الحضور.
+Start a new order before changing its Order Type.,ابدأ طلبًا جديدًا قبل تغيير نوع الطلب.

@@ -15,7 +15,8 @@
     "cancelled_at",
     "comment",
     "approved_by",
-    "approval_challenge"
+    "approval_challenge",
+    "merged_from"
   ],
   "fields": [
     {
@@ -107,6 +108,15 @@
       "label": "Manager Approval",
       "read_only": 1,
       "options": "Approval Challenge"
+    },
+    {
+      "fieldname": "merged_from",
+      "fieldtype": "Link",
+      "label": "Original cancellation",
+      "options": "POS Order Item Cancellation",
+      "read_only": 1,
+      "hidden": 1,
+      "no_copy": 1
     }
   ],
   "permissions": [],

@@ -77,6 +77,91 @@ async function run() {
  sessionChanged.pendingResumeContext = { store: 'STORE-1', session: 'OLD-SESSION', order_name: 'ORDER-9' };
  sessionChanged.call = () => { throw new Error('Do not resume another session'); };
  await sessionChanged.restoreCurrentOrder();
+ // The floor replaces only the content: keep the cashier, cart and route intact.
+ const floor = register();
+ let saved = false;
+ floor.flushDraftSave = async () => { saved = true; };
+ const existingCart = [{ title: 'Pending takeaway item' }];
+ floor.state.cart = existingCart;
+ floor.state.order_type = 'تيك أواي';
+ floor.tableFloor = { state: {}, load: async () => { assert.ok(saved); floor.floorLoaded = true; } };
+ floor.ensureTableFloor = async () => {};
+ context.frappe.set_route = () => { throw new Error('Switching floor content must not navigate away'); };
+ await floor.showTableMap();
+ assert.equal(floor.contentView, 'tables');
+ assert.ok(floor.floorLoaded);
+ assert.equal(floor.state.cart, existingCart);
+ assert.equal(floor.state.order_type, 'تيك أواي', 'the locked floor label cannot change a saved takeaway draft');
+ floor.setContentView('menu');
+ assert.equal(floor.contentView, 'menu');
+ assert.equal(floor.state.cart, existingCart);
+ // The floor can be opened without an open till; opening one remains the native header action.
+ floor.state.session = null;
+ await floor.showTableMap();
+ assert.equal(floor.contentView, 'tables');
+ // A pending floor refresh must not drop a quick Menu -> Tables switch.
+ let finishFloorLoad;
+ const floorLoad = new Promise(resolve => { finishFloorLoad = resolve; });
+ floor.tableFloor.load = () => floorLoad;
+ const refreshing = floor.showTableMap();
+ await new Promise(resolve => setTimeout(resolve, 0));
+ floor.setContentView('menu');
+ const reopened = floor.showTableMap();
+ await new Promise(resolve => setTimeout(resolve, 0));
+ assert.equal(floor.contentView, 'tables');
+ finishFloorLoad();
+ await Promise.all([refreshing, reopened]);
+ // Returning from an available table starts a separate check, preserving the saved one.
+ const nextTable = register();
+ nextTable.state.session.status = 'Open';
+ nextTable.state.order_name = 'EXISTING-CHECK';
+ nextTable.state.cart = [{ title: 'Existing items' }];
+ nextTable.pendingLaunchContext = { store: 'STORE-1', dining_area: 'AREA-2', dining_table: 'TABLE-2' };
+ let finishSave;
+ nextTable.flushDraftSave = () => new Promise(resolve => { finishSave = resolve; });
+ const launch = nextTable.applyLaunchContext();
+ assert.equal(nextTable.state.order_name, 'EXISTING-CHECK', 'never reset a check while its save is pending');
+ finishSave(); await launch;
+ assert.equal(nextTable.state.order_name, null);
+ assert.equal(nextTable.state.cart.length, 0);
+ assert.equal(nextTable.state.order_type, 'صالة');
+ assert.equal(nextTable.state.dining_area, 'AREA-2');
+ assert.equal(nextTable.state.dining_table, 'TABLE-2');
+ // A failed draft save keeps the check and pending table selection intact.
+ const failedLaunch = register();
+ failedLaunch.state.session.status = 'Open'; failedLaunch.state.order_name = 'UNSAVED-CHECK';
+ failedLaunch.pendingLaunchContext = { store: 'STORE-1', dining_table: 'TABLE-3' };
+ failedLaunch.flushDraftSave = async () => { throw new Error('Save failed'); };
+ await assert.rejects(failedLaunch.applyLaunchContext(), /Save failed/);
+ assert.equal(failedLaunch.state.order_name, 'UNSAVED-CHECK');
+ assert.equal(failedLaunch.pendingLaunchContext.dining_table, 'TABLE-3');
+ // Table actions restore the menu before opening the payment split screen.
+ const splitLaunch = register();
+ splitLaunch.state.session.status = 'Open';
+ splitLaunch.pendingLaunchContext = { store: 'STORE-1', order_name: 'TABLE-CHECK', action: 'split' };
+ splitLaunch.flushDraftSave = async () => {};
+ splitLaunch.call = async () => ({ name: 'TABLE-CHECK', status: 'Confirmed' });
+ splitLaunch.loadOrder = async order => { splitLaunch.state.order_name = order.name; splitLaunch.state.order_status = order.status; };
+ splitLaunch.checkout = async () => { splitLaunch.currentOrderScreen = 'payment'; };
+ splitLaunch.openPaymentSplitDialog = () => { splitLaunch.splitOpened = true; };
+ await splitLaunch.applyLaunchContext();
+ assert.equal(splitLaunch.state.order_name, 'TABLE-CHECK');
+ assert.equal(splitLaunch.splitOpened, true);
+ // Removing the last draft item must persist the empty table, rather than revive it on refresh.
+ const emptied = register();
+ Object.assign(emptied.state, { order_name: 'EMPTY-TABLE', order_status: 'Open', dining_table: 'T1', brand: 'BRAND', order_type: 'صالة' });
+ emptied.saveQueue = Promise.resolve();
+ emptied.watchCurrentOrder = () => {};
+ emptied.ensureCurrentOrderActive = async () => true;
+ let savedItems;
+ emptied.call = async (method, args) => {
+  assert.equal(method, 'save_order'); savedItems = JSON.parse(args.order_data).items;
+  return { name: 'EMPTY-TABLE', status: 'Open' };
+ };
+ await emptied.persistDraft();
+ assert.equal(savedItems.length, 0);
+ emptied.state.order_status = 'Confirmed';
+ assert.equal(emptied.canSaveEmptyTable(), false, 'confirmed food cannot disappear through an empty draft save');
  // Bookmarks belong to the signed-in user, as well as the browser tab.
  first.rememberCurrentScreen('sale');
  context.frappe.session.user = 'another-cashier@example.com';

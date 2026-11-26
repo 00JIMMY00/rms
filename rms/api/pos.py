@@ -1143,7 +1143,8 @@ def get_tables(store, dining_area=None):
 	open_orders = frappe.get_all(
 		"POS Order",
 		filters={"store": store, "status": ["not in", ["Paid", "Cancelled"]], "dining_table": ["is", "set"]},
-		fields=["name", "dining_table", "status", "cashier_session", "restaurant_brand", "order_type", "check_label", "grand_total", "modified"],
+		fields=["name", "dining_table", "status", "cashier_session", "restaurant_brand", "order_type", "check_label", "grand_total", "creation", "modified"],
+		order_by="creation asc",
 	)
 	session_names = list({row.cashier_session for row in open_orders if row.cashier_session})
 	session_cashiers = get_session_cashier_names(session_names)
@@ -1157,7 +1158,7 @@ def get_tables(store, dining_area=None):
 		by_table.setdefault(order.dining_table, []).append({"order": order.name, "status": order.status,
 			"cashier_session": order.cashier_session, "cashier": session_cashiers.get(order.cashier_session),
 			"check_label": order.check_label, "order_type": order.order_type,
-			"grand_total": order.grand_total, "modified": order.modified})
+			"grand_total": order.grand_total, "creation": order.creation, "modified": order.modified})
 	area_titles = {row.name: row.title for row in frappe.get_all(
 		"Dining Area", filters={"store": store, "enabled": 1}, fields=["name", "title"]
 	)}
@@ -1365,6 +1366,11 @@ def close_session(session_name, actual_amounts=None):
 			closing_row.expected_amount = flt(row.expected_amount)
 			closing_row.closing_amount = flt(row.actual_amount)
 			closing_row.difference = flt(row.actual_amount) - flt(row.expected_amount)
+		from rms.reservation_payments import DEPOSIT_METHOD
+		for row in closing.payment_reconciliation:
+			if row.mode_of_payment == DEPOSIT_METHOD:
+				row.closing_amount = row.expected_amount
+				row.difference = 0
 		closing.insert(ignore_permissions=True)
 		doc.pos_closing_entry = closing.name
 		doc.save(ignore_permissions=True)
@@ -1504,8 +1510,8 @@ def get_open_order_overview(order_name):
 		frappe.throw(_("Only active orders can be viewed here."))
 	result = {field: doc.get(field) for field in (
 		"name", "status", "store", "cashier_session", "restaurant_brand", "order_type", "customer",
-		"dining_area", "dining_table", "check_label", "subtotal", "discount_amount", "discount_type", "discount_scope",
-		"tax_total", "grand_total", "modified",
+		"dining_area", "dining_table", "expected_departure", "check_label", "subtotal", "discount_amount", "discount_type", "discount_scope",
+		"tax_total", "grand_total", "creation", "modified", "order_notes",
 	)}
 	result["cashier"] = frappe.db.get_value("Cashier Session", doc.cashier_session, "user") if doc.cashier_session else None
 	result["items"] = []
@@ -1518,8 +1524,10 @@ def get_open_order_overview(order_name):
 			"title": frappe.db.get_value("Selling Product", row.selling_product, "title") or row.selling_product,
 			"qty": get_active_order_item_qty(row.qty, row.cancelled_qty), "ordered_qty": row.qty,
 			"cancelled_qty": flt(row.cancelled_qty), "uom": row.uom, "selling_price": row.selling_price,
-			"amount": row.amount, "modifiers": modifiers,
+			"amount": row.amount, "modifiers": modifiers, "notes": row.notes,
+			"sent_to_kitchen": bool(getattr(row, "sent_to_kitchen", 0)),
 		})
+	result["pending_item_count"] = sum(1 for row in result["items"] if row["qty"] > 0 and not row["sent_to_kitchen"])
 	return result
 
 
@@ -1527,9 +1535,10 @@ def get_open_order_overview(order_name):
 def get_open_order_check_print_html(order_name, guest_check_name=None):
 	"""Render a confirmed, unpaid check for table-side printing."""
 	require_pos_action("can_reprint_receipts")
-	order = frappe.get_doc("POS Order", order_name)
+	order = frappe.get_doc("POS Order", order_name, for_update=True)
 	assert_store_access(order.store)
 	require_order_scope(order)
+	assert_items_confirmed(order)
 	if order.status not in ("Confirmed", "In Preparation", "Ready"):
 		frappe.throw(_("Confirm the order before printing its check."))
 	user = frappe.session.user
@@ -1570,16 +1579,22 @@ def get_open_order_check_print_html(order_name, guest_check_name=None):
 
 	rounding_method = frappe.db.get_value("Restaurant Brand", order.restaurant_brand, "pos_rounding_method") or "Nearest"
 	printed_total = flt(round_pos_payable(printed_total, rounding_method), 2)
+	paid_total = 0
+	if not guest_check and order.guest_checks:
+		checks = get_guest_checks(order.name)["guest_checks"]
+		printed_total = sum(flt(row["payable_total"]) for row in checks)
+		paid_total = sum(flt(row["payable_total"]) for row in checks if row["status"] == "Paid")
 	if guest_check and guest_check.status == "Paid" and guest_check.pos_invoice:
 		invoice_totals = frappe.db.get_value("POS Invoice", guest_check.pos_invoice,
 			["rounded_total", "grand_total"], as_dict=True)
 		if invoice_totals:
 			printed_total = flt(invoice_totals.rounded_total if invoice_totals.rounded_total is not None
 				else invoice_totals.grand_total, 2)
+	paid_summary = f'<p>{esc(_("Paid"))}: {paid_total:,.2f}</p><p>{esc(_("Remaining"))}: {max(0, printed_total - paid_total):,.2f}</p>' if paid_total else ""
 	return f"""<!doctype html><html><head><meta charset=\"utf-8\"><title>{esc(label)}</title>
 	<style>body{{font:14px Arial,sans-serif;color:#172e31;max-width:360px;margin:20px auto}}h1{{font-size:20px;margin:0}}p{{margin:6px 0;color:#546665}}table{{width:100%;border-collapse:collapse;margin-top:18px}}td{{padding:9px 3px;border-bottom:1px solid #dfe5e0;vertical-align:top}}td:nth-child(2),td:nth-child(3){{text-align:right;white-space:nowrap}}small{{display:block;color:#62716c;font-size:11px;margin-top:3px}}.note{{color:#945c19}}.total{{display:flex;justify-content:space-between;margin-top:18px;font-size:18px;font-weight:bold}}@media print{{body{{margin:0 auto}}}}</style></head>
 	<body><h1>{esc(label)}</h1><p>{esc(order.dining_table)} · {esc(order.status)}</p><p>{esc(order.store)} · {esc(order.modified)}</p>
-	<table><tbody>{''.join(rows)}</tbody></table><div class=\"total\"><span>{esc(_('Total'))}</span><span>{printed_total:,.2f}</span></div>
+	<table><tbody>{''.join(rows)}</tbody></table><div class=\"total\"><span>{esc(_('Total'))}</span><span>{printed_total:,.2f}</span></div>{paid_summary}
 	<script>window.onload=()=>window.print()</script></body></html>"""
 
 
@@ -1639,9 +1654,10 @@ def get_pos_sales_history(store, limit=50):
 @frappe.whitelist()
 def get_pos_invoice_print_html(order_name, invoice_name=None):
 	require_pos_action("can_reprint_receipts")
-	order = frappe.get_doc("POS Order", order_name)
+	order = frappe.get_doc("POS Order", order_name, for_update=True)
 	assert_store_access(order.store)
 	require_order_scope(order)
+	assert_items_confirmed(order)
 	allowed_invoices = {order.pos_invoice} if order.pos_invoice else set()
 	allowed_invoices.update(row.pos_invoice for row in order.guest_checks or [] if row.pos_invoice)
 	invoice_name = invoice_name or order.pos_invoice
@@ -1691,6 +1707,8 @@ def get_order(order_name):
 		if doc.status in ("Paid", "Cancelled"):
 			frappe.throw(_("Only active orders can be edited."), frappe.PermissionError)
 	result = doc.as_dict()
+	from rms.reservation_payments import order_deposits
+	result["reservation_deposit_balance"] = flt(sum(amount for _, amount in order_deposits(doc.name)), 2)
 	for row in result.get("items", []):
 		row["title"] = frappe.db.get_value("Selling Product", row.get("selling_product"), "title")
 		row["must_be_whole_number"] = bool(frappe.get_cached_value("UOM", row.get("uom"), "must_be_whole_number")) if row.get("uom") else False
@@ -1700,10 +1718,26 @@ def get_order(order_name):
 	return result
 
 
+def has_unconfirmed_items(order):
+	"""Only live quantities count; cancelled or removed additions cannot block actions."""
+	getter = getattr(order, "get", None)
+	items = getter("items") if callable(getter) else getattr(order, "items", None)
+	for row in items or []:
+		read = row.get if callable(getattr(row, "get", None)) else lambda field: getattr(row, field, None)
+		if not cint(read("sent_to_kitchen")) and get_active_order_item_qty(read("qty"), read("cancelled_qty")) > 0:
+			return True
+	return False
+
+
+def assert_items_confirmed(order):
+	if has_unconfirmed_items(order):
+		frappe.throw(_("Confirm or remove unconfirmed items before using order actions."))
+
+
 def get_owned_order(order_name, allowed_statuses):
 	"""Return an order in the caller's active session and Store."""
 	require_pos_role()
-	doc = frappe.get_doc("POS Order", order_name)
+	doc = frappe.get_doc("POS Order", order_name, for_update=True)
 	assert_store_access(doc.store)
 	require_order_scope(doc)
 	if doc.status not in allowed_statuses:
@@ -1725,14 +1759,20 @@ def transfer_order(order_name, dining_table):
 	"""Move an unpaid table order and notify its kitchen printers."""
 	require_pos_action("can_transfer_tables")
 	doc = get_owned_order(order_name, ("Open", "Pending Confirmation", "Confirmed", "In Preparation", "Ready"))
+	assert_items_confirmed(doc)
 	if not dining_table:
 		frappe.throw(_("Choose a destination table."))
+	from rms.table_service import lock_tables, assert_reservation_available
+	lock_tables([doc.dining_table, dining_table])
+	assert_reservation_available(dining_table, doc.get("table_reservation"), doc.name, expected_departure=doc.get("expected_departure"))
 	order_type = frappe.db.get_value("Order Type", doc.order_type, "require_table")
 	if not order_type:
 		frappe.throw(_("Table transfer is only available for table orders."))
-	table = frappe.db.get_value("Dining Table", dining_table, ["store", "dining_area", "enabled"], as_dict=True)
+	table = frappe.db.get_value("Dining Table", dining_table, ["store", "dining_area", "enabled", "capacity"], as_dict=True)
 	if not table or table.store != doc.store or not table.enabled:
 		frappe.throw(_("Choose an enabled table in the same Store."))
+	if cint(doc.get("guest_count")) > cint(table.capacity):
+		frappe.throw(_("Choose a destination table that fits this party."))
 	if frappe.db.exists("POS Order", {"dining_table": dining_table, "name": ["!=", doc.name], "status": ["not in", ["Paid", "Cancelled"]]}):
 		frappe.throw(_("The destination table already has an active order."))
 	old_table = doc.dining_table
@@ -1763,6 +1803,8 @@ def merge_orders(target_order, source_order):
 	require_pos_action("can_merge_orders")
 	target = get_owned_draft_order(target_order)
 	source = get_owned_draft_order(source_order)
+	assert_items_confirmed(target)
+	assert_items_confirmed(source)
 	if target.name == source.name:
 		frappe.throw(_("Choose two different orders."))
 	for fieldname in ("store", "cashier_session", "restaurant_brand", "order_type", "customer", "external_reference"):
@@ -1792,6 +1834,7 @@ def split_order(order_name, quantities, dining_table=None, source_check_label=No
 	"""Move selected quantities from an unconfirmed order into a new draft."""
 	require_pos_action("can_split_orders")
 	source = get_owned_draft_order(order_name)
+	assert_items_confirmed(source)
 	quantities = frappe.parse_json(quantities) or {}
 	if not isinstance(quantities, dict) or not quantities:
 		frappe.throw(_("Enter a quantity for at least one order line."))
@@ -1823,6 +1866,7 @@ def split_order(order_name, quantities, dining_table=None, source_check_label=No
 	new_order = frappe.new_doc("POS Order")
 	for fieldname in ("store", "cashier_session", "restaurant_brand", "order_type", "customer", "external_reference"):
 		new_order.set(fieldname, source.get(fieldname))
+	new_order.expected_departure = source.get("expected_departure")
 	new_order.dining_table = dining_table
 	new_order.check_label = labels[1]
 	if dining_table and dining_table == source.dining_table:
@@ -1852,9 +1896,13 @@ def split_order(order_name, quantities, dining_table=None, source_check_label=No
 @frappe.whitelist()
 def cancel_order(order_name):
 	require_pos_action("can_cancel_orders")
-	doc = frappe.get_doc("POS Order", order_name)
+	doc = frappe.get_doc("POS Order", order_name, for_update=True)
 	assert_store_access(doc.store)
 	require_order_scope(doc)
+	assert_items_confirmed(doc)
+	if any(row.sent_to_kitchen and get_active_order_item_qty(row.qty, row.cancelled_qty) > 0 for row in doc.get("items") or []):
+		frappe.throw(_("Use Void with a reason and authorization to cancel confirmed items."))
+
 	session_user = frappe.db.get_value("Cashier Session", doc.cashier_session, "user") if doc.cashier_session else None
 	manager = bool(set(frappe.get_roles()) & {"POS Manager", "System Manager"})
 	if not session_user or (session_user != frappe.session.user and not manager):
@@ -1893,6 +1941,7 @@ def _get_order_for_item_cancellation(order_name, for_update=False):
 	doc = frappe.get_doc("POS Order", order_name, for_update=for_update)
 	assert_store_access(doc.store)
 	require_order_scope(doc)
+	assert_items_confirmed(doc)
 	if doc.status not in ("Confirmed", "In Preparation", "Ready"):
 		frappe.throw(_("Only confirmed, unpaid order items can be cancelled."))
 	if getattr(doc, "guest_checks", None):
@@ -2173,6 +2222,8 @@ def save_order(order_data):
 		require_order_scope(doc)
 		if data.get("expected_modified") and frappe.utils.get_datetime(data["expected_modified"]) != frappe.utils.get_datetime(doc.modified):
 			return {"name": doc.name, "conflict": True, "modified": str(doc.modified)}
+		if doc.cashier_session == session.name and doc.status in ("Open", "Pending Confirmation") and data.get("order_type") != doc.order_type:
+			frappe.throw(_("Start a new order before changing its Order Type."))
 		if doc.cashier_session != session.name:
 			require_pos_action("can_edit_open_orders")
 			if doc.store != store_doc.name or doc.status not in ("Open", "Pending Confirmation", "Confirmed", "In Preparation", "Ready"):
@@ -2639,9 +2690,10 @@ def get_guest_check_discount_totals(order, guest_check, discount_type=None, disc
 def preview_order_discount(order_name, discount_type="Percentage", discount_value=0, discount_reason="", approval_code=None,
 		approval_approver=None, approval_method="OTP", guest_check_name=None):
 	require_pos_action("can_checkout")
-	doc = frappe.get_doc("POS Order", order_name)
+	doc = frappe.get_doc("POS Order", order_name, for_update=True)
 	assert_store_access(doc.store)
 	require_order_scope(doc)
+	assert_items_confirmed(doc)
 	if doc.cashier_session != frappe.db.get_value("Cashier Session", {"user": frappe.session.user, "status": "Open", "store": doc.store}, "name"):
 		frappe.throw(_("This order does not belong to your open Cashier Session."), frappe.PermissionError)
 	store = frappe.get_doc("Store", doc.store)
@@ -2986,7 +3038,7 @@ def ensure_guest_check_allocations_unchanged(order, normalized):
 
 @frappe.whitelist()
 def pay_guest_check(order_name, guest_check_name, payments, discount_type=None, discount_value=None, discount_reason=None,
-		discount_approval_code=None, discount_approval_approver=None):
+		discount_approval_code=None, discount_approval_approver=None, deposit_amount=0):
 	require_pos_action("can_checkout")
 	order = frappe.get_doc("POS Order", order_name)
 	assert_store_access(order.store)
@@ -2997,7 +3049,7 @@ def pay_guest_check(order_name, guest_check_name, payments, discount_type=None, 
 		frappe.throw(_("Guest check was not found."))
 	return pay_order(order_name, payments, discount_type=discount_type, discount_value=discount_value,
 		discount_reason=discount_reason, discount_approval_code=discount_approval_code,
-		discount_approval_approver=discount_approval_approver, guest_check_name=guest_check_name)
+		discount_approval_approver=discount_approval_approver, guest_check_name=guest_check_name, deposit_amount=deposit_amount)
 
 
 @frappe.whitelist()
@@ -3006,6 +3058,7 @@ def save_guest_check_allocations(order_name, guest_checks):
 	order = frappe.get_doc("POS Order", order_name, for_update=True)
 	assert_store_access(order.store)
 	require_order_scope(order)
+	assert_items_confirmed(order)
 	if order.status not in ("Confirmed", "In Preparation", "Ready"):
 		frappe.throw(_("Confirm the order before splitting it by items."))
 	if order.cashier_session and frappe.db.get_value("Cashier Session", order.cashier_session, "user") != frappe.session.user:
@@ -3056,6 +3109,7 @@ def resplit_open_guest_check(order_name, guest_check_name, guest_checks):
 	order = frappe.get_doc("POS Order", order_name, for_update=True)
 	assert_store_access(order.store)
 	require_order_scope(order)
+	assert_items_confirmed(order)
 	if order.status not in ("Confirmed", "In Preparation", "Ready"):
 		frappe.throw(_("Only an active unpaid order can be split."))
 	if order.cashier_session and frappe.db.get_value("Cashier Session", order.cashier_session, "user") != frappe.session.user:
@@ -3161,11 +3215,12 @@ def clear_guest_check_allocations(order_name):
 
 @frappe.whitelist()
 def pay_order(order_name, payments, guest_breakdown=None, discount_type=None, discount_value=None, discount_reason=None,
-		discount_approval_code=None, discount_approval_approver=None, guest_check_name=None):
+		discount_approval_code=None, discount_approval_approver=None, guest_check_name=None, deposit_amount=0):
 	require_pos_action("can_checkout")
 	doc = frappe.get_doc("POS Order", order_name, for_update=True)
 	assert_store_access(doc.store)
 	require_order_scope(doc)
+	assert_items_confirmed(doc)
 	if doc.cashier_session and frappe.db.get_value("Cashier Session", doc.cashier_session, "user") != frappe.session.user:
 		frappe.throw(_("This order belongs to another Cashier Session."), frappe.PermissionError)
 	guest_check = next((row for row in getattr(doc, "guest_checks", []) or [] if row.name == guest_check_name), None) if guest_check_name else None
@@ -3269,20 +3324,29 @@ def pay_order(order_name, payments, guest_breakdown=None, discount_type=None, di
 	from rms.pos_rounding import round_pos_payable
 	rounding_method = frappe.db.get_value("Restaurant Brand", doc.restaurant_brand, "pos_rounding_method") or "Nearest"
 	payable_total = flt(round_pos_payable(expected_grand_total, rounding_method), 2)
+	from rms.reservation_payments import DEPOSIT_METHOD, order_deposits, ensure_accounts, apply_deposit
+	deposit_bookings = order_deposits(doc.name, lock=True)
+	deposit_available = flt(sum(amount for _, amount in deposit_bookings), 2)
+	deposit_used = flt(min(deposit_available, payable_total), 2)
+	if abs(flt(deposit_amount) - deposit_used) > .001:
+		frappe.throw(_("The reservation deposit changed. Reopen payment to apply the current balance."))
+	cash_due = flt(payable_total - deposit_used, 2)
+	if guest_rows and deposit_used:
+		frappe.throw(_("Use a single payment or saved guest checks when applying a reservation deposit."))
 	guest_rows, payment_totals = validate_guest_payment_rows(
 		guest_rows if not guest_check_name else [], allowed_methods, allow_zero=payable_total <= 0.005)
 	if guest_rows:
 		payment_rows = [{"mode_of_payment": method, "amount": amount} for method, amount in payment_totals.items()]
 	payment_rows = ensure_payment_rows_for_total(
-		payment_rows, [row.mode_of_payment for row in allowed_payment_rows], payable_total)
+		payment_rows, [row.mode_of_payment for row in allowed_payment_rows], cash_due)
 	seen_methods = set()
 	for payment in payment_rows:
 		method = payment.get("mode_of_payment")
-		if method not in allowed_methods or method in seen_methods:
+		if method not in allowed_methods or method == DEPOSIT_METHOD or method in seen_methods:
 			frappe.throw(_("Choose each payment method once from this cashier session."))
 		seen_methods.add(method)
 		amount = flt(payment.get("amount"))
-		if amount < 0 or (amount <= 0 and payable_total > 0.005):
+		if amount < 0 or (amount <= 0 and cash_due > 0.005):
 			frappe.throw(_("Payment amounts must be greater than zero."))
 	split_mode = guest_rows[0]["split_mode"] if guest_rows else None
 	guest_item_allocations = get_guest_check_item_allocations(guest_check) if guest_check else None
@@ -3297,7 +3361,7 @@ def pay_order(order_name, payments, guest_breakdown=None, discount_type=None, di
 			parse_json_rows(item.modifiers), item.cancelled_qty) for item in active_item_rows}
 	if guest_rows:
 		validate_guest_item_allocations(guest_rows, active_items, expected_grand_total, item_amounts)
-	paid_total, change_amount = validate_payment_change(payment_rows, payable_total)
+	paid_total, change_amount = validate_payment_change(payment_rows, cash_due)
 	if discount_value is not None:
 		if discount_approval_code and discount_approval_approver:
 			if guest_check:
@@ -3396,7 +3460,10 @@ def pay_order(order_name, payments, guest_breakdown=None, discount_type=None, di
 				modifier_invoice_item["conversion_factor"] = 1
 			modifier_invoice_row = invoice.append("items", modifier_invoice_item)
 			invoice_line_rates.append((modifier_invoice_row, flt(modifier.selling_price), modifier_invoice_row.warehouse))
-	for index, payment in enumerate(payment_rows):
+	invoice_payment_rows = list(payment_rows)
+	if deposit_used:
+		invoice_payment_rows.append({"mode_of_payment": DEPOSIT_METHOD, "amount": deposit_used})
+	for index, payment in enumerate(invoice_payment_rows):
 		invoice.append("payments", {
 			"mode_of_payment": payment.get("mode_of_payment"),
 			"amount": flt(payment.get("amount")),
@@ -3409,6 +3476,8 @@ def pay_order(order_name, payments, guest_breakdown=None, discount_type=None, di
 	actor = frappe.session.user
 	try:
 		frappe.set_user("Administrator")
+		if deposit_used:
+			ensure_accounts(company)
 		with allow_rms_cashier_session_pos_invoice(invoice, session, actor), prevent_pos_item_price_autoinsert(invoice):
 			invoice.set_missing_values()
 			_apply_order_tax_template(invoice, doc.sales_taxes_and_charges_template)
@@ -3439,6 +3508,8 @@ def pay_order(order_name, payments, guest_breakdown=None, discount_type=None, di
 			for invoice_row in invoice.items:
 				frappe.db.set_value("POS Invoice Item", invoice_row.name, "owner", actor, update_modified=False)
 			invoice.submit()
+			if deposit_used:
+				apply_deposit(deposit_bookings, deposit_used, doc, invoice, session)
 			if guest_check and flt(guest_check.discount_amount) > 0 and guest_check.discount_reason:
 				discount_comment = _("POS guest check discount: {0} {1} on {2}. Reason: {3}. Applied by {4}.").format(
 					guest_check.discount_value, guest_check.discount_type, guest_check.discount_scope,
@@ -3456,6 +3527,8 @@ def pay_order(order_name, payments, guest_breakdown=None, discount_type=None, di
 	finally:
 		frappe.set_user(actor)
 
+	if deposit_used:
+		payment_rows = invoice_payment_rows
 	if guest_check:
 		guest_check.status = "Paid"
 		guest_check.pos_invoice = invoice.name
